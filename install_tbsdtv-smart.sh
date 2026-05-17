@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# install_tbsdtv-smart v13
-# Zmiany wzgledem v12:
-#   - KCFLAGS zamiast EXTRA_CFLAGS (kernel 6.19 usunal EXTRA_CFLAGS z Makefile.build)
-#   - Tworzenie minimalnego Makefile dla pci/saa716x z obj-m
-#   - Tworzenie minimalnego Makefile dla pci/tbsecp3 z obj-m
-#   - cleanup/trap przywraca teraz 5 plikow (bylo 3)
+# install_tbsdtv-smart v17
+# Zmiany wzgledem v16:
+#   - EXTRA_CFLAGS: dodano ${SRC}/dvb-frontends i stid135 (mb86a16.h i inne TBS-only headers)
+#   - Dynamiczne wykrywanie CONFIG_*_MODULE=1 dla IS_REACHABLE i recznie pisanych guardow
+#     (obejmuje IS_REACHABLE(CONFIG_X) i defined(CONFIG_X_MODULE) w headerach TBS)
+#   - cleanup: Makefile TBS nie sa przywracane z .orig - tylko naglowki kernela
+#   - Wykrywanie "pozostalosci" sprawdza tylko naglowki kernela
 set -euo pipefail
 
 DRY_RUN=0
@@ -29,7 +30,8 @@ BUILD_DIR="$SCRIPT_DIR/tbs-build-tmp"
 INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
 LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
 
-TARGET_DIRS=("dvb-core" "dvb-frontends" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod")
+# tuners kompiluje sie przed frontends/saa/tbs zeby Module.symvers byl dostepny
+TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod")
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG"; }
@@ -43,6 +45,9 @@ echo "=== $(date) ===" > "$LOG"
 echo "  Kernel: $KVER / DryRun: $DRY_RUN" | tee -a "$LOG"
 
 ker_ge() { [[ "$KMAJ" -gt "$1" ]] || { [[ "$KMAJ" -eq "$1" ]] && [[ "$KMIN" -ge "$2" ]]; }; }
+ker_lt() { ! ker_ge "$1" "$2"; }
+# ker_in MAJ1 MIN1 MAJ2 MIN2 -> true jezeli MAJ1.MIN1 <= kernel < MAJ2.MIN2
+ker_in() { ker_ge "$1" "$2" && ker_lt "$3" "$4"; }
 
 apply_sed() {
     local file="$1" desc="$2" expr="$3"
@@ -82,11 +87,16 @@ cleanup() {
     local mf="$SRC/drivers/media/dvb-frontends/Makefile"
     local mf_saa="$SRC/drivers/media/pci/saa716x/Makefile"
     local mf_tbs="$SRC/drivers/media/pci/tbsecp3/Makefile"
-    [[ -f "${h1}.orig" ]]     && mv "${h1}.orig"     "$h1"     && info "  Przywrocono: dvb_frontend.h"
-    [[ -f "${h2}.orig" ]]     && mv "${h2}.orig"     "$h2"     && info "  Przywrocono: frontend.h"
-    [[ -f "${mf}.orig" ]]     && mv "${mf}.orig"     "$mf"     && info "  Przywrocono: dvb-frontends/Makefile"
-    [[ -f "${mf_saa}.orig" ]] && mv "${mf_saa}.orig" "$mf_saa" && info "  Przywrocono: saa716x/Makefile"
-    [[ -f "${mf_tbs}.orig" ]] && mv "${mf_tbs}.orig" "$mf_tbs" && info "  Przywrocono: tbsecp3/Makefile"
+    local mf_tuners="$SRC/drivers/media/tuners/Makefile"
+    # Naglowki kernela: zawsze przywracamy (sa poza drzewem TBS)
+    [[ -f "${h1}.orig" ]]        && mv "${h1}.orig"        "$h1"        && info "  Przywrocono: dvb_frontend.h"
+    [[ -f "${h2}.orig" ]]        && mv "${h2}.orig"        "$h2"        && info "  Przywrocono: frontend.h"
+    # Makefile TBS: NIE przywracamy - sa czescia drzewa TBS i musza pozostac
+    # zmodyfikowane zeby insmod/modprobe moglo je znalezc. Usuwamy tylko .orig.
+    [[ -f "${mf}.orig" ]]        && rm "${mf}.orig"        && info "  Usunieto backup: dvb-frontends/Makefile.orig"
+    [[ -f "${mf_saa}.orig" ]]    && rm "${mf_saa}.orig"    && info "  Usunieto backup: saa716x/Makefile.orig"
+    [[ -f "${mf_tbs}.orig" ]]    && rm "${mf_tbs}.orig"    && info "  Usunieto backup: tbsecp3/Makefile.orig"
+    [[ -f "${mf_tuners}.orig" ]] && rm "${mf_tuners}.orig" && info "  Usunieto backup: tuners/Makefile.orig"
 }
 trap cleanup EXIT
 
@@ -112,8 +122,10 @@ H2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"
 MF="$SRC/drivers/media/dvb-frontends/Makefile"
 MF_SAA="$SRC/drivers/media/pci/saa716x/Makefile"
 MF_TBS="$SRC/drivers/media/pci/tbsecp3/Makefile"
+MF_TUNERS="$SRC/drivers/media/tuners/Makefile"
 STALE=0
-for f in "${H1}.orig" "${H2}.orig" "${MF}.orig" "${MF_SAA}.orig" "${MF_TBS}.orig"; do
+# Sprawdzamy tylko naglowki kernela - Makefile TBS nie sa przywracane po udanym przebiegu
+for f in "${H1}.orig" "${H2}.orig"; do
     [[ -f "$f" ]] && { warn "Pozostalosc po przerwanym uruchomieniu: $f"; STALE=1; }
 done
 if [[ "$STALE" -eq 1 ]]; then
@@ -207,36 +219,56 @@ drxd-objs     := drxd_firm.o drxd_hard.o
 drxk-objs     := drxk_hard.o
 stb0899-objs  := stb0899_drv.o stb0899_algo.o
 stv0900-objs  := stv0900_core.o stv0900_sw.o
+# TBS-exclusive frontendy
 obj-m += avl6882.o
-obj-m += cxd2820r.o
 obj-m += cxd2878.o
-obj-m += dib9000.o
-obj-m += drxd.o
-obj-m += drxk.o
 obj-m += gx1133.o
 obj-m += gx1503.o
-obj-m += isl6422.o
-obj-m += lgs8gl5.o
-obj-m += lnbh29.o
 obj-m += m88rs6060.o
 obj-m += mn88436.o
 obj-m += mn88443x.o
 obj-m += mtv23x.o
 obj-m += mxl58x.o
-obj-m += s5h1432.o
-obj-m += si2183.o
-obj-m += stb0899.o
-obj-m += stv0900.o
+obj-m += stid135/
 obj-m += stv091x.o
 obj-m += tas2101.o
 obj-m += tas2971.o
 obj-m += tbs_priv.o
+# Frontendy obecne w kernelu, ale TBS ma zmodyfikowane wersje
+obj-m += cx24117.o
+obj-m += cxd2820r.o
+obj-m += dib9000.o
+obj-m += isl6422.o
+obj-m += lgs8gl5.o
+obj-m += lnbh29.o
+obj-m += mb86a16.o
+obj-m += s5h1432.o
+obj-m += si2168.o
+obj-m += si2183.o
+obj-m += stb0899.o
+obj-m += stv0900.o
 MAKEFILE
 info "Makefile dvb-frontends gotowy."
+
+step "Tworzenie minimalnego Makefile dla tuners"
+cp "$MF_TUNERS" "${MF_TUNERS}.orig"
+cat > "$MF_TUNERS" << 'MAKEFILE'
+ccflags-y += -I$(srctree)/drivers/media/dvb-frontends/
+# Tunery TBS-specific (nie ma w kernelu dystrybucji lub TBS ma zmodyfikowane wersje)
+obj-m += av201x.o
+obj-m += si2157.o
+obj-m += stv6120.o
+obj-m += tda18212.o
+MAKEFILE
+info "Makefile tuners gotowy."
 
 step "Tworzenie minimalnego Makefile dla pci/saa716x"
 cp "$MF_SAA" "${MF_SAA}.orig"
 cat > "$MF_SAA" << 'MAKEFILE'
+ccflags-y += -Idrivers/media/tuners
+ccflags-y += -Idrivers/media/dvb-core
+ccflags-y += -Idrivers/media/dvb-frontends
+ccflags-y += -Idrivers/media/dvb-frontends/stid135
 saa716x_core-objs := saa716x_pci.o saa716x_i2c.o saa716x_cgu.o saa716x_msi.o \
                      saa716x_dma.o saa716x_vip.o saa716x_aip.o saa716x_phi.o  \
                      saa716x_boot.o saa716x_fgpi.o saa716x_adap.o saa716x_gpio.o \
@@ -250,6 +282,10 @@ info "Makefile saa716x gotowy."
 step "Tworzenie minimalnego Makefile dla pci/tbsecp3"
 cp "$MF_TBS" "${MF_TBS}.orig"
 cat > "$MF_TBS" << 'MAKEFILE'
+ccflags-y += -Idrivers/media/tuners
+ccflags-y += -Idrivers/media/dvb-core
+ccflags-y += -Idrivers/media/dvb-frontends
+ccflags-y += -Idrivers/media/dvb-frontends/stid135
 tbsecp3-objs := tbsecp3-core.o tbsecp3-cards.o tbsecp3-i2c.o tbsecp3-dma.o \
                 tbsecp3-dvb.o tbsecp3-ca.o tbsecp3-asi.o tbsecp3-ci.o
 obj-m += tbsecp3.o
@@ -257,9 +293,52 @@ MAKEFILE
 info "Makefile tbsecp3 gotowy."
 
 step "Kompilacja"
-EXTRA_CFLAGS="-I${BUILD_DIR}/include -I${BUILD_DIR}/include/uapi -I${SRC}/drivers/media/tuners -include linux/version.h ${MISSING_DEFINES}"
+EXTRA_CFLAGS="-I${BUILD_DIR}/include -I${BUILD_DIR}/include/uapi -I${SRC}/drivers/media/tuners -I${SRC}/drivers/media/dvb-frontends -I${SRC}/drivers/media/dvb-frontends/stid135 -include linux/version.h ${MISSING_DEFINES}"
+# IS_REACHABLE(CONFIG_X) = IS_BUILTIN(X) || (IS_MODULE(X) && defined(MODULE))
+# IS_MODULE(X) sprawdza CONFIG_X_MODULE=1, nie CONFIG_X=m.
+# Dla modulow TBS z IS_REACHABLE w headerach dodajemy _MODULE=1 zeby
+# uniknac redefinicji funkcji attach (static inline vs extern).
+# IS_REACHABLE(CONFIG_X) = IS_BUILTIN(X) || (IS_MODULE(X) && defined(MODULE))
+# IS_MODULE(X) sprawdza CONFIG_X_MODULE=1, nie CONFIG_X=m.
+# Wykrywamy dynamicznie wszystkie CONFIG_* uzywane w IS_REACHABLE lub recznie
+# przez defined(CONFIG_X_MODULE) w headerach TBS i dodajemy _MODULE=1.
+REACHABLE_DEFINES=""
+while IFS= read -r cfg; do
+    REACHABLE_DEFINES+=" -D${cfg}_MODULE=1"
+done < <(
+    {
+        # Wzorzec 1: IS_REACHABLE(CONFIG_FOO)
+        grep -rh "IS_REACHABLE(CONFIG_" \
+            "$SRC/drivers/media/dvb-frontends/" \
+            "$SRC/drivers/media/tuners/" \
+            2>/dev/null \
+        | grep -oP 'IS_REACHABLE\(CONFIG_\w+\)' \
+        | grep -oP 'CONFIG_\w+(?=\))'
+
+        # Wzorzec 3: IS_ENABLED(CONFIG_FOO) - jak IS_REACHABLE ale bez MODULE check
+        grep -rh "IS_ENABLED(CONFIG_" \
+            "$SRC/drivers/media/dvb-frontends/" \
+            "$SRC/drivers/media/tuners/" \
+            2>/dev/null \
+        | grep -oP 'IS_ENABLED\(CONFIG_\w+\)' \
+        | grep -oP 'CONFIG_\w+(?=\))'
+        # Wzorzec 2: defined(CONFIG_FOO_MODULE) -> wyciagamy CONFIG_FOO
+        grep -rh "defined(CONFIG_.*_MODULE)" \
+            "$SRC/drivers/media/dvb-frontends/" \
+            "$SRC/drivers/media/tuners/" \
+            2>/dev/null \
+        | grep -oP 'CONFIG_\w+(?=_MODULE)'
+    } | sort -u
+)
+EXTRA_CFLAGS+=" $REACHABLE_DEFINES"
+info "Dodano $(echo "$REACHABLE_DEFINES" | wc -w) definicji _MODULE dla IS_REACHABLE"
 info "EXTRA_CFLAGS: $(echo "$MISSING_DEFINES" | wc -w) definicji CONFIG_DVB_*"
 ERRORS=(); SUCCESS=()
+
+# COMBINED_SYMVERS: kazdy kolejny modul widzi symbole wszystkich poprzednich.
+# Rozwiazuje "undefined symbol" przy modpost dla modulow zaleznych od dvb-core / frontends.
+COMBINED_SYMVERS="$BUILD_DIR/Module.symvers"
+: > "$COMBINED_SYMVERS"
 
 for subdir in "${TARGET_DIRS[@]}"; do
     target="$SRC/drivers/media/$subdir"
@@ -268,9 +347,14 @@ for subdir in "${TARGET_DIRS[@]}"; do
     info "Kompiluje: $subdir"
     MODULE_LOG=$(mktemp)
     # KCFLAGS zamiast EXTRA_CFLAGS od kernela 6.19
-    if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" modules 2>&1 \
+    # KBUILD_EXTRA_SYMBOLS: przekazuje symbole z wczesniej skompilowanych modulow
+    if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" \
+            KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" modules 2>&1 \
             | tee "$MODULE_LOG" | tee -a "$LOG"; then
         info "  OK: $subdir"; SUCCESS+=("$subdir")
+        # Akumuluj symbole dla nastepnych modulow w kolejce
+        [[ -f "$target/Module.symvers" ]] && \
+            cat "$target/Module.symvers" >> "$COMBINED_SYMVERS"
     else
         warn "  BLAD: $subdir"; ERRORS+=("$subdir")
         echo -e "${RED}  --- Bledy w $subdir ---${NC}" | tee -a "$LOG"
