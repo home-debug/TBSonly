@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
-# install_tbsdtv-smart v18 - FINAL
-# DZIAŁA TYLKO NA: kernel 7.x (Debian 14+)
-# KARTY: TBS 6922 (SAA716x) + TBS 6902 (TBSECP3)
-# DATA: 2025-01-XX
-#
-# TBS repo jest frozen na kernel 6.12 - wszystkie zmiany API (6.19 i 7.0)
-# są aplikowane przez patche. Skrypt nie obsługuje kernel < 7.0.
-#
-# Funkcjonalność:
-#   - Kompilacja dvb-core, dvb-frontends, tuners, saa716x, tbsecp3, tbsci, tbsmod
-#   - COMBINED_SYMVERS dla zależności między modułami
-#   - Wykrywanie brakujących CONFIG_DVB_*
-#   - Wykrywanie IS_REACHABLE/CONFIG_*_MODULE
-#   - Kolorowy output, logowanie, dry-run
-#   - Idempotentność przez markery w patchach
+# install_tbsdtv-smart v19
+# Zmiany wzgledem v18:
+#   - Minimalny wymagany kernel: 7.0 (dropped support < 7.0)
+#   - Usunieto ker_lt / ker_in (nie sa juz potrzebne - jeden cel: 7.x)
+#   - kernel-patches.sh: wszystkie patche bezwarunkowe (zawsze stosowane na 7.x)
+#   - Uproszczone komunikaty i komentarze
 set -euo pipefail
 
 DRY_RUN=0
@@ -38,29 +29,20 @@ BUILD_DIR="$SCRIPT_DIR/tbs-build-tmp"
 INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
 LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
 
-# Kolejność kompilacji ma znaczenie - Module.symvers z poprzednich modułów
-# jest przekazywany do następnych (COMBINED_SYMVERS)
+# tuners kompiluje sie przed frontends/saa/tbs zeby Module.symvers byl dostepny
 TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod")
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*" | tee -a "$LOG"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG"; exit 1; }
-step()  { echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | tee -a "$LOG"
-          echo -e "${CYAN}>>> $*${NC}" | tee -a "$LOG"; }
+step()  { echo -e "\n${CYAN}>>> $*${NC}" | tee -a "$LOG"; }
 pi()    { echo -e "${BLUE}[PATCH]${NC} $*" | tee -a "$LOG"; }
 
 [[ "$DRY_RUN" -eq 1 ]] && warn "TRYB DRY-RUN - zadne pliki nie beda modyfikowane"
 echo "=== $(date) ===" > "$LOG"
 echo "  Kernel: $KVER / DryRun: $DRY_RUN" | tee -a "$LOG"
 
-# Sprawdzenie wersji - skrypt działa TYLKO na 7.x
-if [[ "$KMAJ" -lt 7 ]]; then
-    error "Ten skrypt działa TYLKO na kernelu 7.x. Masz: $KVER"
-fi
-info "Kernel $KVER - OK (7.x)"
-
-# Funkcje pomocnicze (uproszczone - tylko ker_ge, reszta niepotrzebna)
 ker_ge() { [[ "$KMAJ" -gt "$1" ]] || { [[ "$KMAJ" -eq "$1" ]] && [[ "$KMIN" -ge "$2" ]]; }; }
 
 apply_sed() {
@@ -114,6 +96,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
+step "Sprawdzanie wersji kernela (wymagany 7.0+)"
+ker_ge 7 0 || error "Kernel $KVER jest za stary. Wymagany 7.0+."
+info "Kernel $KVER - OK"
+
 step "Sprawdzanie srodowiska"
 echo "  Kernel:          $KVER"            | tee -a "$LOG"
 echo "  KBuild:          $KBUILD"          | tee -a "$LOG"
@@ -134,6 +120,7 @@ MF_SAA="$SRC/drivers/media/pci/saa716x/Makefile"
 MF_TBS="$SRC/drivers/media/pci/tbsecp3/Makefile"
 MF_TUNERS="$SRC/drivers/media/tuners/Makefile"
 STALE=0
+# Sprawdzamy tylko naglowki kernela - Makefile TBS nie sa przywracane po udanym przebiegu
 for f in "${H1}.orig" "${H2}.orig"; do
     [[ -f "$f" ]] && { warn "Pozostalosc po przerwanym uruchomieniu: $f"; STALE=1; }
 done
@@ -158,7 +145,7 @@ else
     info "[DRY-RUN] Pomijam git."
 fi
 
-# Aplikujemy wszystkie patche (TBS repo frozen na 6.12, wszystkie zmiany API potrzebne)
+# UWAGA: apply_kernel_api_patches musi byc przed BUILD_DIR i przed nadpisaniem Makefile TBS
 apply_kernel_api_patches
 [[ "$DRY_RUN" -eq 1 ]] && { info "Dry-run zakończony."; exit 0; }
 
@@ -301,9 +288,17 @@ MAKEFILE
 info "Makefile tbsecp3 gotowy."
 
 step "Kompilacja"
-EXTRA_CFLAGS="-I${BUILD_DIR}/include -I${BUILD_DIR}/include/uapi -I${SRC}/drivers/media/tuners -I${SRC}/drivers/media/dvb-frontends -I${SRC}/drivers/media/dvb-frontends/stid135 -include linux/version.h ${MISSING_DEFINES}"
+EXTRA_CFLAGS="-I${BUILD_DIR}/include -I${BUILD_DIR}/include/uapi \
+    -I${SRC}/drivers/media/tuners \
+    -I${SRC}/drivers/media/dvb-frontends \
+    -I${SRC}/drivers/media/dvb-frontends/stid135 \
+    -include linux/version.h \
+    ${MISSING_DEFINES}"
 
-# Wykrywanie CONFIG_*_MODULE dla IS_REACHABLE i defined(CONFIG_FOO_MODULE)
+# IS_REACHABLE(CONFIG_X) = IS_BUILTIN(X) || (IS_MODULE(X) && defined(MODULE))
+# IS_MODULE(X) sprawdza CONFIG_X_MODULE=1, nie CONFIG_X=m.
+# Wykrywamy dynamicznie wszystkie CONFIG_* uzywane w IS_REACHABLE, IS_ENABLED
+# lub recznie przez defined(CONFIG_X_MODULE) w headerach TBS i dodajemy _MODULE=1.
 REACHABLE_DEFINES=""
 while IFS= read -r cfg; do
     REACHABLE_DEFINES+=" -D${cfg}_MODULE=1"
@@ -315,12 +310,14 @@ done < <(
             2>/dev/null \
         | grep -oP 'IS_REACHABLE\(CONFIG_\w+\)' \
         | grep -oP 'CONFIG_\w+(?=\))'
+
         grep -rh "IS_ENABLED(CONFIG_" \
             "$SRC/drivers/media/dvb-frontends/" \
             "$SRC/drivers/media/tuners/" \
             2>/dev/null \
         | grep -oP 'IS_ENABLED\(CONFIG_\w+\)' \
         | grep -oP 'CONFIG_\w+(?=\))'
+
         grep -rh "defined(CONFIG_.*_MODULE)" \
             "$SRC/drivers/media/dvb-frontends/" \
             "$SRC/drivers/media/tuners/" \
@@ -331,10 +328,10 @@ done < <(
 EXTRA_CFLAGS+=" $REACHABLE_DEFINES"
 info "Dodano $(echo "$REACHABLE_DEFINES" | wc -w) definicji _MODULE dla IS_REACHABLE"
 info "EXTRA_CFLAGS: $(echo "$MISSING_DEFINES" | wc -w) definicji CONFIG_DVB_*"
-
 ERRORS=(); SUCCESS=()
 
-# COMBINED_SYMVERS: kazdy kolejny modul widzi symbole wszystkich poprzednich
+# COMBINED_SYMVERS: kazdy kolejny modul widzi symbole wszystkich poprzednich.
+# Rozwiazuje "undefined symbol" przy modpost dla modulow zaleznych od dvb-core / frontends.
 COMBINED_SYMVERS="$BUILD_DIR/Module.symvers"
 : > "$COMBINED_SYMVERS"
 
@@ -344,6 +341,8 @@ for subdir in "${TARGET_DIRS[@]}"; do
     [[ -f "$target/Makefile" ]] || { warn "Brak Makefile: $subdir"; continue; }
     info "Kompiluje: $subdir"
     MODULE_LOG=$(mktemp)
+    # KCFLAGS zamiast EXTRA_CFLAGS od kernela 6.19
+    # KBUILD_EXTRA_SYMBOLS: przekazuje symbole z wczesniej skompilowanych modulow
     if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" \
             KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" modules 2>&1 \
             | tee "$MODULE_LOG" | tee -a "$LOG"; then
@@ -385,17 +384,6 @@ find "$SRC/drivers/media" -name "*.ko" 2>/dev/null | sort \
 info "Log: $LOG"
 
 step "Instalacja modulow"
-echo -e "${CYAN}  Podgląd modułów które zostaną zainstalowane:${NC}"
-find "$SRC/drivers/media" -name "*.ko" 2>/dev/null | sort | while read -r f; do
-    modname=$(basename "$f" .ko)
-    if lsmod | grep -q "^$modname "; then
-        echo -e "    ${GREEN}●${NC} $(basename "$f") (już załadowany)"
-    else
-        echo -e "    ${YELLOW}○${NC} $(basename "$f")"
-    fi
-done
-echo ""
-
 echo -e "${CYAN}  Instalowac moduly dla kernela ${KVER}?"
 echo -e "  Cel: ${INSTALL_DIR}${NC}"
 read -rp "  [t/N]: " ANSWER
