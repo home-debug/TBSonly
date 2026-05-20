@@ -29,8 +29,8 @@ apt install build-essential git rsync python3 \
 
 ```bash
 # Clone the script repository
-git clone https://github.com/your-repo/tbs-drivers-script.git
-cd tbs-drivers-script
+git clone https://github.com/home-debug/TBSonly.git
+cd TBSonly
 
 # Build and install
 bash install_tbsdtv-smart.sh
