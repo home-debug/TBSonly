@@ -167,6 +167,27 @@ Shared modules used across the cards above:
 
 ## Disclaimer
 
-This script patches TBS sources at build time solely to fix kernel API
-incompatibilities. It does not modify driver functionality. All TBS driver
-code remains the intellectual property of TBS Technology.
+This script was created for **personal use** and is shared as-is, without any
+warranty, support, or guarantee of fitness for any particular purpose.
+
+**Use at your own risk.** The author accepts no responsibility for any damage,
+data loss, system instability, hardware malfunction, or any other issue arising
+from the use of this script or the compiled drivers. By using this script, you
+agree that you do so entirely at your own risk.
+
+**AI-generated content.** This script and its associated files were generated
+with the assistance of an AI language model. They have been tested in a specific
+environment (Debian Testing, kernel 7.0.x) but may not work correctly in other
+configurations. Always review the code before running it on your system.
+
+**Third-party intellectual property.** All TBS driver source code is the
+intellectual property of [TBS Technology](https://www.tbsdtv.com/) and is
+subject to their respective licenses. This script does not redistribute any TBS
+source code — it only automates the process of cloning the official
+[tbsdtv/linux_media](https://github.com/tbsdtv/linux_media) repository and
+applying build-time patches to fix kernel API incompatibilities. No driver
+functionality is altered.
+
+This project is not affiliated with, endorsed by, or supported by TBS Technology
+in any way. All product names and trademarks are the property of their respective
+owners.
