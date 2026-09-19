@@ -1,37 +1,53 @@
 #!/usr/bin/env bash
-# install_tbsdtv-smart v18
-# Changes from v17/v19:
-#   - All messages translated to English
-#   - Git output: verbose progress (--progress flag)
-#   - Pause after each major step (press Enter to continue)
-#   - Removed fallback MISSING_DEFINES hardcoded list
-#   - Minimum kernel: 7.0+
+# install_tbsdtv-smart v19
+# Changes from v18:
+#   - Root privilege check
+#   - Cross-distro kernel source auto-detection (Debian, Fedora, Arch, openSUSE)
+#   - Hardware detection (cosmetic, parses TBS source tree, zero hardcoded maps)
+#   - Parallel build (-j$(nproc))
+#   - Added usb/dvb-usb for TBS USB tuners
+#   - --branch / --testing flags for TBS repo selection
 set -euo pipefail
 
 DRY_RUN=0
+TBS_BRANCH="${TBS_BRANCH:-latest}"
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1 ;;
-        --help|-h) echo "Usage: $0 [--dry-run]"; exit 0 ;;
+        --branch)
+            shift
+            TBS_BRANCH="$1"
+            ;;
+        --testing) TBS_BRANCH="testing" ;;
+        --help|-h)
+            echo "Usage: $0 [--dry-run] [--branch NAME|--testing]"
+            echo ""
+            echo "Options:"
+            echo "  --dry-run       Show what would be done without modifying anything"
+            echo "  --branch NAME   Use specific TBS repo branch (default: latest)"
+            echo "  --testing       Shortcut for --branch testing"
+            echo "  -h, --help      Show this help message"
+            echo ""
+            echo "Environment:"
+            echo "  TBS_BRANCH      Override default branch (e.g. TBS_BRANCH=main $0)"
+            exit 0
+            ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TBS_REPO="https://github.com/tbsdtv/linux_media.git"
-TBS_BRANCH="latest"
 SRC="/usr/src/tbs-drivers"
 KVER="$(uname -r)"
 KMAJ=$(echo "$KVER" | cut -d. -f1)
 KMIN=$(echo "$KVER" | cut -d. -f2)
-KBUILD="/lib/modules/${KVER}/build"
-KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
 BUILD_DIR="$SCRIPT_DIR/tbs-build-tmp"
 INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
 LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
 
-# tuners must be compiled before frontends/saa/tbs so Module.symvers is available
-TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod")
+# Always build all TBS targets
+TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod" "usb/dvb-usb")
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG"; }
@@ -41,9 +57,17 @@ step()  { echo -e "\n${CYAN}>>> $*${NC}" | tee -a "$LOG"; }
 pi()    { echo -e "${BLUE}[PATCH]${NC} $*" | tee -a "$LOG"; }
 pause() { echo -e "${YELLOW}--- Press Enter to continue ---${NC}"; read -r; }
 
+# ===========================================================================
+# Privilege check
+# ===========================================================================
+if [[ "$EUID" -ne 0 ]]; then
+    echo -e "${RED}[ERROR]${NC} This script must be run as root or with sudo." >&2
+    exit 1
+fi
+
 [[ "$DRY_RUN" -eq 1 ]] && warn "DRY-RUN MODE - no files will be modified"
 echo "=== $(date) ===" > "$LOG"
-echo "  Kernel: $KVER / DryRun: $DRY_RUN" | tee -a "$LOG"
+echo "  Kernel: $KVER / Branch: $TBS_BRANCH / DryRun: $DRY_RUN" | tee -a "$LOG"
 
 ker_ge() { [[ "$KMAJ" -gt "$1" ]] || { [[ "$KMAJ" -eq "$1" ]] && [[ "$KMIN" -ge "$2" ]]; }; }
 
@@ -71,6 +95,251 @@ apply_python_patch() {
     python3 -c "$pycode" "$file" && pi "  OK" || warn "  python error: $file"
 }
 
+# ===========================================================================
+# Distribution & kernel source auto-detection
+# ===========================================================================
+detect_distro() {
+    [[ -f /etc/os-release ]] && source /etc/os-release
+    DISTRO="${ID:-unknown}"
+    DISTRO_LIKE="${ID_LIKE:-}"
+    info "  Distribution: $DISTRO"
+}
+
+detect_kernel_sources() {
+    # KBUILD — directory used by make -C
+    local kbuild_candidates=(
+        "/lib/modules/${KVER}/build"
+        "/usr/src/kernels/${KVER}"
+        "/usr/src/linux-headers-${KVER}"
+        "/usr/src/linux-${KVER}"
+    )
+
+    KBUILD=""
+    for dir in "${kbuild_candidates[@]}"; do
+        [[ -d "$dir" && -f "$dir/Makefile" ]] && { KBUILD="$dir"; break; }
+    done
+
+    if [[ -z "$KBUILD" ]]; then
+        case "$DISTRO" in
+            debian|ubuntu|linuxmint|pop)
+                error "Kernel build dir not found.\n  Install: apt install linux-headers-${KVER}" ;;
+            fedora|rhel|centos|almalinux|rocky)
+                error "Kernel build dir not found.\n  Install: dnf install kernel-devel-${KVER}" ;;
+            arch|manjaro)
+                error "Kernel build dir not found.\n  Install: pacman -S linux-headers" ;;
+            opensuse*|suse*)
+                error "Kernel build dir not found.\n  Install: zypper in kernel-default-devel=${KVER%-default}" ;;
+            *)
+                error "Kernel build dir not found for ${KVER}.\n  Checked: ${kbuild_candidates[*]}" ;;
+        esac
+    fi
+    info "  KBuild: $KBUILD"
+
+    # Headers source for rsync into BUILD_DIR
+    local hdr_candidates=()
+    [[ -d "/usr/src/linux-headers-${KVER}" ]] && hdr_candidates+=("/usr/src/linux-headers-${KVER}")
+    local common=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
+    [[ -n "$common" && -d "$common" ]] && hdr_candidates+=("$common")
+    [[ -d "/usr/src/kernels/${KVER}" ]] && hdr_candidates+=("/usr/src/kernels/${KVER}")
+    [[ -d "/usr/src/linux-${KVER}" ]] && hdr_candidates+=("/usr/src/linux-${KVER}")
+
+    KHEADERS_COMMON=""
+    for dir in "${hdr_candidates[@]}"; do
+        if [[ -d "$dir/include" ]]; then
+            KHEADERS_COMMON="$dir"
+            break
+        fi
+    done
+
+    if [[ -z "$KHEADERS_COMMON" ]]; then
+        warn "  Could not find dedicated headers tree. Falling back to KBUILD."
+        KHEADERS_COMMON="$KBUILD"
+    fi
+    info "  Headers source: $KHEADERS_COMMON"
+}
+
+# ===========================================================================
+# TBS Hardware Detection (cosmetic only, does not affect build targets)
+# ===========================================================================
+detect_tbs_cards() {
+    local py_script py_out
+    py_script=$(mktemp /tmp/detect_tbs.XXXXXX.py)
+
+    cat > "$py_script" << 'PYEOF'
+import re, os, glob, subprocess, sys
+
+src = sys.argv[1] if len(sys.argv) > 1 else "/usr/src/tbs-drivers"
+
+def parse_tbs_pci_map(src_path):
+    tbs_map = {}
+
+    # --- TBSECP3 ---
+    cards = os.path.join(src_path, "drivers/media/pci/tbsecp3/tbsecp3-cards.c")
+    core  = os.path.join(src_path, "drivers/media/pci/tbsecp3/tbsecp3-core.c")
+
+    board_names = {}
+    if os.path.exists(cards):
+        with open(cards) as f:
+            content = f.read()
+        for m in re.finditer(r'\[([A-Z_0-9]+)\]\s*=\s*\{[^}]*?\.name\s*=\s*"([^"]+)"', content, re.DOTALL):
+            board_names[m.group(1)] = m.group(2).strip()
+
+    if os.path.exists(core):
+        with open(core) as f:
+            content = f.read()
+        for m in re.finditer(r'TBSECP3_ID\(([A-Z_0-9]+),0x([0-9a-fA-F]+),0x([0-9a-fA-F]+)\)', content):
+            bid, sv, sd = m.groups()
+            name = board_names.get(bid, bid)
+            key = (0x544d, 0x6178, int(sv, 16), int(sd, 16))
+            tbs_map[key] = name
+
+    # --- SAA716x ---
+    budget = os.path.join(src_path, "drivers/media/pci/saa716x/saa716x_budget.c")
+    if not os.path.exists(budget):
+        return tbs_map
+
+    defs = {}
+    for h in glob.glob(os.path.join(src_path, "drivers/media/pci/saa716x/*.h")):
+        with open(h) as f:
+            for m in re.finditer(r'#define\s+([A-Z_][A-Z0-9_]*)\s+0x([0-9a-fA-F]+)', f.read()):
+                defs[m.group(1)] = int(m.group(2), 16)
+
+    defs.setdefault('NXP_SEMICONDUCTOR', 0x1131)
+    defs.setdefault('SAA7160', 0x7160)
+    defs.setdefault('SAA7161', 0x7161)
+    defs.setdefault('SAA7162', 0x7162)
+
+    with open(budget) as f:
+        budget_lines = f.readlines()
+
+    for line in budget_lines:
+        m = re.search(
+            r'MAKE_ENTRY\(\s*([A-Z_0-9]+)\s*,\s*([A-Z_0-9]+)\s*,\s*([A-Z_0-9]+)\s*,\s*&([a-z_0-9]+)',
+            line)
+        if not m:
+            continue
+
+        sv_n, sd_n, chip_n, cfg_name = m.groups()
+        sv = defs.get(sv_n)
+        sd = defs.get(sd_n)
+        chip = defs.get(chip_n)
+        if sv is None or sd is None or chip is None:
+            continue
+
+        cm = re.search(r'/\*\s*(.+?)\s*\*/', line)
+        model = cm.group(1).strip() if cm else f"{sv_n} {sd_n}"
+
+        tbs_m = re.search(r'tbs(\d+)', cfg_name, re.IGNORECASE)
+        if tbs_m:
+            clone = f"TBS{tbs_m.group(1)}"
+            if clone not in model:
+                model += f" ({clone})"
+
+        key = (0x1131, chip, sv, sd)
+        tbs_map[key] = model
+
+    return tbs_map
+
+def scan_pci():
+    try:
+        out = subprocess.check_output(["lspci", "-vmm", "-nn"], text=True)
+    except Exception:
+        return []
+
+    cards = []
+    current = {}
+    for line in out.splitlines():
+        if line.startswith("Slot:"):
+            if current:
+                cards.append(current)
+            current = {"slot": line[5:].strip()}
+        elif line.startswith("Vendor:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["vendor"] = int(m.group(1), 16)
+        elif line.startswith("Device:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["device"] = int(m.group(1), 16)
+        elif line.startswith("SVendor:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["svendor"] = int(m.group(1), 16)
+        elif line.startswith("SDevice:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["sdevice"] = int(m.group(1), 16)
+        elif line.startswith("Rev:"):
+            current["rev"] = line[4:].strip()
+
+    if current:
+        cards.append(current)
+    return cards
+
+def main():
+    if not os.path.isdir(src):
+        print("WARN|TBS sources not found. Skipping detection.")
+        sys.exit(0)
+
+    tbs_map = parse_tbs_pci_map(src)
+    found = []
+
+    for card in scan_pci():
+        v = card.get("vendor")
+        d = card.get("device")
+        sv = card.get("svendor")
+        sd = card.get("sdevice")
+        if v is None or d is None or sv is None or sd is None:
+            continue
+
+        key = (v, d, sv, sd)
+        if key in tbs_map:
+            if v == 0x544d:
+                family = "TBSECP3"
+            elif v == 0x1131:
+                family = "SAA716x"
+            else:
+                print(f"WARN|Unknown TBS bridge vendor {v:04x}: {tbs_map[key]}  [PCI {card.get('slot', '?')}]")
+                print(f"WARN|  No driver module assigned — please update the script.")
+                continue
+            found.append({
+                "family": family,
+                "name": tbs_map[key],
+                "slot": card.get("slot", "?"),
+                "sub": f"{sv:04x}:{sd:04x}",
+                "rev": card.get("rev", "-")
+            })
+
+    if not found:
+        print("WARN|No TBS cards detected via lspci.")
+        return
+
+    for c in found:
+        print(f"INFO|Found {c['name']}  [PCI {c['slot']}, subdev {c['sub']}, rev {c['rev']}]")
+        print(f"INFO|  -> requires {c['family']} driver")
+
+    print(f"INFO|Total TBS cards detected: {len(found)}")
+
+if __name__ == "__main__":
+    main()
+PYEOF
+
+    step "Detecting TBS cards from source tree..."
+
+    if [[ ! -d "$SRC/drivers/media/pci/tbsecp3" && ! -d "$SRC/drivers/media/pci/saa716x" ]]; then
+        warn "  TBS sources not found yet. Skipping hardware detection."
+        rm -f "$py_script"
+        return
+    fi
+
+    py_out=$(python3 "$py_script" "$SRC" 2>/dev/null || true)
+
+    while IFS='|' read -r prefix msg; do
+        case "$prefix" in
+            INFO) info "  $msg" ;;
+            WARN) warn "  $msg" ;;
+        esac
+    done <<< "$py_out"
+
+    rm -f "$py_script"
+}
+
 # Load patches from separate file
 PATCHES_FILE="$SCRIPT_DIR/kernel-patches.sh"
 [[ -f "$PATCHES_FILE" ]] || error "Patches file not found: $PATCHES_FILE"
@@ -86,6 +355,7 @@ cleanup() {
     local mf_saa="$SRC/drivers/media/pci/saa716x/Makefile"
     local mf_tbs="$SRC/drivers/media/pci/tbsecp3/Makefile"
     local mf_tuners="$SRC/drivers/media/tuners/Makefile"
+    local mf_usb="$SRC/drivers/media/usb/dvb-usb/Makefile"
     # Kernel headers: always restore (outside TBS tree)
     [[ -f "${h1}.orig" ]]        && mv "${h1}.orig"        "$h1"        && info "  Restored: dvb_frontend.h"
     [[ -f "${h2}.orig" ]]        && mv "${h2}.orig"        "$h2"        && info "  Restored: frontend.h"
@@ -95,6 +365,7 @@ cleanup() {
     [[ -f "${mf_saa}.orig" ]]    && rm "${mf_saa}.orig"    && info "  Removed backup: saa716x/Makefile.orig"
     [[ -f "${mf_tbs}.orig" ]]    && rm "${mf_tbs}.orig"    && info "  Removed backup: tbsecp3/Makefile.orig"
     [[ -f "${mf_tuners}.orig" ]] && rm "${mf_tuners}.orig" && info "  Removed backup: tuners/Makefile.orig"
+    [[ -f "${mf_usb}.orig" ]]    && rm "${mf_usb}.orig"    && info "  Removed backup: usb/dvb-usb/Makefile.orig"
 }
 trap cleanup EXIT
 
@@ -104,13 +375,12 @@ info "Kernel $KVER - OK"
 
 step "Checking build environment"
 echo "  Kernel:         $KVER"            | tee -a "$LOG"
-echo "  KBuild:         $KBUILD"          | tee -a "$LOG"
 echo "  TBS sources:    $SRC"             | tee -a "$LOG"
-echo "  Common headers: $KHEADERS_COMMON" | tee -a "$LOG"
 echo "  Log:            $LOG"             | tee -a "$LOG"
 
-[[ -d "$KBUILD" ]] || error "Kernel build directory not found: $KBUILD"
-[[ -n "$KHEADERS_COMMON" && -d "$KHEADERS_COMMON" ]] || error "linux-headers-*-common not found"
+detect_distro
+detect_kernel_sources
+
 for cmd in git make gcc rsync python3; do
     command -v "$cmd" &>/dev/null || error "Missing dependency: $cmd"
 done
@@ -132,6 +402,9 @@ if [[ "$STALE" -eq 1 ]]; then
     cleanup; trap cleanup EXIT
 fi
 info "Environment OK."
+
+detect_tbs_cards
+
 pause
 
 step "Fetching/updating TBS sources -> $SRC"
@@ -282,6 +555,49 @@ tbsecp3-objs := tbsecp3-core.o tbsecp3-cards.o tbsecp3-i2c.o tbsecp3-dma.o \
 obj-m += tbsecp3.o
 MAKEFILE
 info "tbsecp3 Makefile ready."
+
+step "Creating minimal Makefile for usb/dvb-usb"
+cp "$SRC/drivers/media/usb/dvb-usb/Makefile" "${SRC}/drivers/media/usb/dvb-usb/Makefile.orig" 2>/dev/null || true
+cat > "$SRC/drivers/media/usb/dvb-usb/Makefile" << 'MAKEFILE'
+ccflags-y += -Idrivers/media/dvb-core
+ccflags-y += -Idrivers/media/dvb-frontends
+ccflags-y += -Idrivers/media/tuners
+dvb-usb-tbs5520-objs := tbs5520.o
+dvb-usb-tbs5520se-objs := tbs5520se.o
+dvb-usb-tbs5580-objs := tbs5580.o
+dvb-usb-tbs5590-objs := tbs5590.o
+dvb-usb-tbs5880-objs := tbs5880.o
+dvb-usb-tbs5881-objs := tbs5881.o
+dvb-usb-tbs5920-objs := tbs5920.o
+dvb-usb-tbs5922-objs := tbs5922.o
+dvb-usb-tbs5925-objs := tbs5925.o
+dvb-usb-tbs5930-objs := tbs5930.o
+dvb-usb-tbs5220-objs := tbs5220.o
+dvb-usb-tbs5301-objs := tbs5301.o
+dvb-usb-tbsqbox-objs := tbsqbox.o
+dvb-usb-tbsqbox2-objs := tbsqbox2.o
+dvb-usb-tbsqbox2ci-objs := tbsqbox2ci.o
+dvb-usb-tbsqbox22-objs := tbsqbox22.o
+dvb-usb-tbsqboxs2-objs := tbsqboxs2.o
+obj-m += dvb-usb-tbs5520.o
+obj-m += dvb-usb-tbs5520se.o
+obj-m += dvb-usb-tbs5580.o
+obj-m += dvb-usb-tbs5590.o
+obj-m += dvb-usb-tbs5880.o
+obj-m += dvb-usb-tbs5881.o
+obj-m += dvb-usb-tbs5920.o
+obj-m += dvb-usb-tbs5922.o
+obj-m += dvb-usb-tbs5925.o
+obj-m += dvb-usb-tbs5930.o
+obj-m += dvb-usb-tbs5220.o
+obj-m += dvb-usb-tbs5301.o
+obj-m += dvb-usb-tbsqbox.o
+obj-m += dvb-usb-tbsqbox2.o
+obj-m += dvb-usb-tbsqbox2ci.o
+obj-m += dvb-usb-tbsqbox22.o
+obj-m += dvb-usb-tbsqboxs2.o
+MAKEFILE
+info "usb/dvb-usb Makefile ready."
 pause
 
 step "Compilation"
@@ -339,7 +655,7 @@ for subdir in "${TARGET_DIRS[@]}"; do
     info "Compiling: $subdir"
     MODULE_LOG=$(mktemp)
     if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" \
-            KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" modules 2>&1 \
+            KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" -j$(nproc) modules 2>&1 \
             | tee "$MODULE_LOG" | tee -a "$LOG"; then
         info "  OK: $subdir"; SUCCESS+=("$subdir")
         [[ -f "$target/Module.symvers" ]] && \

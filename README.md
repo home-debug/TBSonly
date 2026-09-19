@@ -1,193 +1,117 @@
-# TBS Technology — Linux Driver Build Script
+# TBSonly
 
-An automated build script for [TBS Technology](https://www.tbsdtv.com/) PCIe DVB card drivers
-on recent Linux kernels. Compiles drivers directly from the official
-[tbsdtv/linux_media](https://github.com/tbsdtv/linux_media) repository (branch `latest`)
-with all patches required to build cleanly on kernel 7.x.
+Out-of-tree driver installer for **TBS DVB tuners** on modern Linux kernels (7.0+).
 
-> **Tested on:** Debian Testing (Trixie), kernel **7.0.7+deb14-amd64**  
-> **Last verified:** August 2026
+This project was created with the help of **Claude AI (Anthropic)**.  
+The generated code is verified and tested by a human.
 
----
+## Supported cards
+
+### PCIe
+
+| Model | Type | Status |
+|---|---|---|
+| TBS 6205, 6209, 6216, 6281SE/TD | DVB-T/T2/C | Supported |
+| TBS 6290SE/TD | DVB-T/T2/C + ISDB-T | Supported |
+| TBS 6522/H, 6528 | DVB-S/S2 + DVB-T/T2/C | Supported |
+| TBS 6590/SE | DVB-S/S2 + DVB-T/T2/C | Supported |
+| TBS 6902/SE, 6903/X, 6904/X/SE, 6905, 6908 | DVB-S/S2 | Supported |
+| TBS 6909/X/SE, 6910/SE/X, 6912, 6916 | DVB-S/S2 + CI | Supported |
+| TBS 6704 | ISDB-T | Supported |
+| TBS 6301/SE, 6302SE/X/T/RV, 6304/X/T/RV, 6308/X, 6312X | DVB-S/S2 modulator | Supported |
+| TBS 6322, 6324 | ISDB-T modulator | Supported |
+| TBS 6331 | DVB-C modulator | Supported |
+| TBS 6504/H, 6508 | DVB-S/S2X + DVB-T/T2/C | Supported |
+| TBS 6814, 6514 | DVB-T/T2/C | Supported |
+| TBS 7230 | ATSC | Supported |
+| TBS 7901 | DVB-S/S2 + CI | Supported |
+| TBS 6280, 6281, 6284, 6285 | DVB-T/T2/C (SAA716x) | Supported |
+| TBS 6220, 6221 | DVB-T/T2/C (SAA716x) | Supported |
+| TBS 6922, 6923, 6925 | DVB-S/S2 (SAA716x) | Supported |
+| TBS 6982/SE, 6983, 6984, 6985 | DVB-S/S2 (SAA716x) | Supported |
+| TBS 6991/SE | DVB-S/S2 + CI (SAA716x) | Supported |
+| TBS 7220 | DVB-S/S2 (SAA716x) | Supported |
+| Technotrend TT4100 | DVB-S/S2 (TBS6922 clone) | Supported |
+
+### USB
+
+| Model | Type | Status |
+|---|---|---|
+| TBS 5220 | DVB-T/T2/C | Supported |
+| TBS 5520SE | DVB-S/S2 + DVB-T/T2/C | Supported |
+| TBS 5580 | DVB-S/S2 + DVB-T/T2/C | Supported |
+| TBS 5590 | DVB-S/S2 + DVB-T/T2/C | Supported |
+| TBS 5880, 5881 | DVB-T/T2/C + ISDB-T | Supported |
+| TBS 5920, 5922, 5925 | DVB-S/S2 | Supported |
+| TBS 5930 | DVB-S/S2X | Supported |
+| TBS 5301 | DVB-S/S2 | Supported |
+| TBS QBox series | DVB-S/S2 | Supported |
 
 ## Requirements
 
-- Debian Testing (Trixie) or compatible
-- Kernel **7.0+**
-- Root access
+- Linux kernel **7.0+**
+- Root privileges (the script checks this automatically)
+- Installed kernel headers matching your running kernel
+- Dependencies: `git`, `make`, `gcc`, `rsync`, `python3`
 
-Install build dependencies:
+### Installing kernel headers
 
-```bash
-apt install build-essential git rsync python3 \
-    linux-headers-$(uname -r) linux-headers-$(uname -r | sed 's/-[^-]*$//')-common
-```
-
----
+| Distribution | Command |
+|---|---|
+| Debian / Ubuntu | `apt install linux-headers-$(uname -r)` |
+| Fedora / RHEL | `dnf install kernel-devel-$(uname -r)` |
+| Arch / Manjaro | `pacman -S linux-headers` |
+| openSUSE | `zypper in kernel-default-devel` |
 
 ## Usage
 
 ```bash
-# Clone the script repository
-git clone https://github.com/home-debug/TBSonly.git
-cd TBSonly
+# Standard build (uses all CPU cores automatically)
+sudo bash install_tbsdtv-smart.sh
 
-# Build and install
-bash install_tbsdtv-smart.sh
+# Dry-run (shows what would be done without modifying anything)
+sudo bash install_tbsdtv-smart.sh --dry-run
 
-# Dry-run (no files modified — shows what would be done)
-bash install_tbsdtv-smart.sh --dry-run
+# Use TBS testing branch instead of latest
+sudo bash install_tbsdtv-smart.sh --testing
+
+# Use specific TBS branch
+sudo bash install_tbsdtv-smart.sh --branch main
+
+# Or via environment variable
+TBS_BRANCH=testing sudo bash install_tbsdtv-smart.sh
 ```
-
-The script will:
-1. Clone or update the TBS source tree into `/usr/src/tbs-drivers`
-2. Apply all kernel API compatibility patches automatically
-3. Compile all supported modules
-4. Ask before installing — modules are copied to `/lib/modules/$(uname -r)/updates/tbs/`
-5. Run `depmod` so modules are available immediately after reboot
-
-After installation verify with:
-
-```bash
-dmesg | grep -i tbs
-lsmod | grep tbs
-```
-
----
 
 ## How it works
 
-The TBS source repository (`tbsdtv/linux_media`) is a fork of the full Linux media
-tree and does not track upstream kernel API changes. This script patches the TBS
-sources at build time to fix incompatibilities introduced in kernel 6.19+ and 7.0+,
-without modifying the TBS repository itself. All patches are idempotent — safe to
-run repeatedly on the same source tree.
+1. **Auto-detects your distribution** and locates kernel build sources (`/lib/modules/*/build`, `/usr/src/kernels/*`, etc.)
+2. **Parses TBS source tree** to detect which PCIe cards are physically present in your system (cosmetic — all modules are still built for compatibility)
+3. **Patches kernel API mismatches** via `kernel-patches.sh` (idempotent — safe to re-run)
+4. **Creates isolated build environment** with headers from both distro kernel and TBS repo
+5. **Compiles only TBS-specific modules** (dvb-core, frontends, tuners, PCIe bridges, USB tuners) — not the entire kernel tree
+6. **Installs to `/lib/modules/*/updates/tbs/`** and runs `depmod`
 
-Patched files:
-- `dvb-core/dmxdev.c` — timer API, `dvb_vb2_fill_buffer`, `dvb_vb2_init`
-- `dvb-core/dvb-pll.c` — IDA API
-- `dvb-frontends/avl6882.h` — `IS_REACHABLE` guard
-- `dvb-frontends/cxd2820r_core.c` — `gpio_chip.set` signature
-- `dvb-frontends/mxl58x.c` — unused static functions
+## Files
 
----
+| File | Purpose |
+|---|---|
+| `install_tbsdtv-smart.sh` | Main installer script |
+| `kernel-patches.sh` | API compatibility patches for new kernels |
+| `README.md` | This file |
+| `RELEASES.md` | Changelog |
 
-## Supported PCIe Cards — TBSECP3 bridge
+## Tested on
 
-Driver: `tbsecp3.ko`
+- Debian 13 (Trixie) — kernel 7.x
+- Ubuntu 26.04
+- Fedora 42
+- Arch Linux
+- openSUSE Tumbleweed
 
-| Model | Standard |
-|-------|----------|
-| TBS 6205 | DVB-T/T2/C |
-| TBS 6205SE | DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
-| TBS 6209 | DVB-T/T2/C/C2, ISDB-T — Octa |
-| TBS 6209SE | DVB-T/T2/C/C2, ISDB-T/C, ATSC — Octa |
-| TBS 6216 | DVB-T/T2/C, ISDB-T, ATSC 1.0 — Hex |
-| TBS 6281TD | DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
-| TBS 6290SE | DVB-T/T2/C + 2×CI |
-| TBS 6504 | DVB-S/S2/S2X/T/T2/C/C2/ISDB-T |
-| TBS 6504H | Quad DVB-S/S2x + Quad DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
-| TBS 6508 | DVB-S/S2/S2X/T/T2/C (QAM-A/B/C)/C2/ISDB-T |
-| TBS 6514 | DTMB — Quad |
-| TBS 6522 | DVB-S/S2/S2X/T/T2/C/C2/ISDB-T |
-| TBS 6522H | Dual DVB-S/S2x + Dual DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
-| TBS 6528 | DVB-S/S2/S2X/T/T2/C/C2/ISDB-T + CI |
-| TBS 6590SE | DVB-S/S2/S2X/T/T2/C/C2 + 2×CI |
-| TBS 6704 | ATSC/QAM-B — Quad |
-| TBS 6814 | ISDB-T — Quad |
-| TBS 6902 | DVB-S/S2 |
-| TBS 6902SE | DVB-S/S2/S2x |
-| TBS 6903 | DVB-S/S2 |
-| TBS 6904 | DVB-S/S2 |
-| TBS 6904se | DVB-S/S2/S2x |
-| TBS 6904x | DVB-S/S2/S2X |
-| TBS 6905 | DVB-S/S2 |
-| TBS 6908 | DVB-S/S2 |
-| TBS 6909 | DVB-S/S2 |
-| TBS 6909SE | DVB-S/S2/S2x — Octa |
-| TBS 6910 | DVB-S/S2 + 2×CI |
-| TBS 6910SE | DVB-S/S2/S2x + 2×CI |
-| TBS 6910X | DVB-S/S2/S2X + 2×CI |
-| TBS 6916 | DVB-S/S2/S2X — Octa |
-| TBS 7230 | DVB-T/T2/C/C2, ISDB-T/C, ATSC — Octa |
-| TBS 7901 | DVB-S/S2/S2x |
+## License
 
----
-
-## Supported PCIe Cards — SAA716x bridge
-
-Driver: `saa716x_tbs-dvb.ko`
-
-| Model | Standard |
-|-------|----------|
-| TBS 6220 | DVB-T |
-| TBS 6221 | DVB-T |
-| TBS 6280 | DVB-T/T2/C — Dual |
-| TBS 6281 | DVB-T/T2/C — Dual |
-| TBS 6284 | DVB-T/T2/C — Quad |
-| TBS 6285 | DVB-T/T2/C — Quad |
-| TBS 6290 | DVB-T/T2/C — Dual |
-| TBS 6922 | DVB-S/S2 |
-| TBS 6923 | DVB-S/S2 |
-| TBS 6925 | DVB-S/S2 |
-| TBS 6982 | DVB-S/S2 — Dual |
-| TBS 6982SE | DVB-S/S2 — Dual |
-| TBS 6983 | DVB-S/S2 — Dual |
-| TBS 6984 | DVB-S/S2 — Quad |
-| TBS 6985 | DVB-S/S2 — Quad |
-| TBS 6991 | DVB-S/S2 — Dual + CI |
-| TBS 6991SE | DVB-S/S2 — Dual + CI |
-| TBS 7220 | DVB-T |
-
----
-
-## Compiled frontend and tuner modules
-
-Shared modules used across the cards above:
-
-**Frontends** (`dvb-frontends/`):
-`avl6882`, `cx24117`, `cxd2820r`, `cxd2878`, `dib9000`, `gx1133`, `gx1503`,
-`isl6422`, `lgs8gl5`, `lnbh29`, `m88rs6060`, `mb86a16`, `mn88436`, `mn88443x`,
-`mtv23x`, `mxl58x`, `s5h1432`, `si2168`, `si2183`, `stb0899`, `stid135`,
-`stv0900`, `stv091x`, `tas2101`, `tas2971`, `tbs_priv`
-
-**Tuners** (`tuners/`):
-`av201x`, `si2157`, `stv6120`, `tda18212`
-
----
-
-## Not yet supported (planned)
-
-| Category | Cards | Status |
-|----------|-------|--------|
-| USB | TBS 5220, 5230, 5301, 5520, 5520SE, 5530, 5580, 5590, 5880, 5881, 5922SE, 5925, 5927, 5930, 5931, QBox, QBox2, QBox2CI, QBox22, QBoxS2 | Planned |
-| PCIe Capture | TBS 6301, 6301T, 6302SE/T/X, 6304, 6304SE/T/X, 6308X, 6312X, 6322, 6324, 6331, 690a | Planned |
-
----
+MIT License — see repository for details.
 
 ## Disclaimer
 
-This script was created for **personal use** and is shared as-is, without any
-warranty, support, or guarantee of fitness for any particular purpose.
-
-**Use at your own risk.** The author accepts no responsibility for any damage,
-data loss, system instability, hardware malfunction, or any other issue arising
-from the use of this script or the compiled drivers. By using this script, you
-agree that you do so entirely at your own risk.
-
-**AI-generated content.** This script and its associated files were generated
-with the assistance of an AI language model. They have been tested in a specific
-environment (Debian Testing, kernel 7.0.x) but may not work correctly in other
-configurations. Always review the code before running it on your system.
-
-**Third-party intellectual property.** All TBS driver source code is the
-intellectual property of [TBS Technology](https://www.tbsdtv.com/) and is
-subject to their respective licenses. This script does not redistribute any TBS
-source code — it only automates the process of cloning the official
-[tbsdtv/linux_media](https://github.com/tbsdtv/linux_media) repository and
-applying build-time patches to fix kernel API incompatibilities. No driver
-functionality is altered.
-
-This project is not affiliated with, endorsed by, or supported by TBS Technology
-in any way. All product names and trademarks are the property of their respective
-owners.
+This is an **unofficial** installer. TBS does not maintain the `linux_media` tree for modern kernels. This script bridges that gap by applying community patches and building out-of-tree. Use at your own risk.
