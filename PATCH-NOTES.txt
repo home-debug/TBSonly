@@ -1,169 +1,166 @@
-TBSonly - paczka zmian 2026-09-19 (v20-dev)
-===========================================
+TBSonly - change package 2026-09-19 (v20-dev)
+=============================================
 
-Zawartosc:
-  install_tbsdtv-smart.sh  - kompletny skrypt v20-dev (zastap plik na branchu dev)
-  README.md                - wersja dla branchu dev z poprawiona sekcja Usage
-  RELEASES.md              - changelog z nowym wpisem v20-dev na gorze
+Contents:
+  install_tbsdtv-smart.sh  - complete v20-dev script (replace on the dev branch)
+  README.md                - dev-branch README with fixed Usage section
+  RELEASES.md              - changelog with the new v20-dev entry on top
+  kernel-patches.sh        - complete file set for the dev branch
 
-Co nowego w v20-dev:
-  1. Detekcja wlasnego brancha (main/dev/detached/zip) - wyswietlana w naglowku i logu
-  2. Automatyczne mapowanie brancha TBS: dev -> testing, main/inne -> latest
-  3. Sprawdzanie aktualizacji: gdy origin/dev jest nowszy niz biezacy checkout,
-     skrypt proponuje przejscie na dev z wyraznym ostrzezeniem (dev moze nie dzialac);
-     po potwierdzeniu robi checkout + pull i restartuje sam siebie
-  4. Fix parsowania --branch NAME (wczesniej wystepowal blad "Unknown argument")
-  5. Sekcja Usage w README: pelna instrukcja clone + git checkout dev
+New in v20-dev:
+  1. Self-branch detection (main/dev/detached/zip) - shown in header and log
+  2. Update check: when origin/dev is ahead of the current checkout, the
+     script offers to switch with a clear warning (dev may not work);
+     on confirmation it checks out + pulls and restarts itself
+  3. Fixed --branch NAME argument parsing (previously "Unknown argument")
+  4. README Usage section: full clone + git checkout dev instructions
+  5. (later) TBS branch selection defaults to 'latest' for all branches,
+     with upstream validation via git ls-remote (see "TBS branch audit")
 
-Paczka zawiera tez kernel-patches.sh (bez zmian wzgledem v19-dev) - komplet plikow
-do podmiany na branchu dev.
-Przed wypchnieciem: bash -n install_tbsdtv-smart.sh (sprawdzone, OK).
+Package also contains kernel-patches.sh - complete replacement set for dev.
+Syntax check before release: bash -n install_tbsdtv-smart.sh (verified OK).
 
-Audyt wsteczny (2026-09-19, wieczor):
-  - Po audycie "nic nie usuwaj" wykryto i naprawiono przypadkowa regresje:
-    brakowalo linii TARGET_DIRS (8 katalogow budowania) - bez niej petla
-    kompilacji budowala ZERO modulow.
-  - Potwierdzono obecnosc wszystkich funkcjonalnosci v19: root check,
-    detekcja dystrybucji i zrodel kernela, detekcja sprzetu (python),
-    8 targetow budowania, USB dvb-usb, -j$(nproc), --branch/--testing,
-    TBS_BRANCH=, czyszczenie starych modulow, dry-run, check 7.0+,
-    lancuch Module.symvers, izolowany build dir, cleanup trap, depmod.
+Backward audit (2026-09-19, evening):
+  - After the "never remove functionality" audit, an accidental regression
+    was found and fixed: the TARGET_DIRS line (8 build directories) was
+    missing - without it the compile loop built ZERO modules.
+  - Confirmed presence of all v19 features: root check, distro and kernel
+    source detection, hardware detection (python), 8 build targets,
+    USB dvb-usb, -j$(nproc), --branch/--testing, TBS_BRANCH=, stale module
+    cleanup, dry-run, 7.0+ check, Module.symvers chaining, isolated build
+    dir, cleanup trap, depmod, idempotent patches.
 
 README (2026-09-20):
-  - Kompletna tabela kart PCIe TBSECP3 (35 modeli, wszystkie warianty SE/H/X)
-    + SAA716x (22 modele + Technotrend TT4100) + modulatory TBSMOD + USB
-  - Przywrocone sekcje z main: "Compiled frontend and tuner modules"
-    i "Not yet supported (planned)" (skorygowane - USB/modulatory czesciowo
-    juz wspierane na dev)
-  - Dodana nota: tabele sa reczne, detekcja sprzetu dziala automatycznie
+  - Complete PCIe card tables: TBSECP3 (35 models, all SE/H/X variants)
+    + SAA716x (22 models + Technotrend TT4100) + TBSMOD modulators + USB
+  - Restored sections from main: "Compiled frontend and tuner modules"
+    and "Not yet supported (planned)" (adjusted - USB/modulators partially
+    supported on dev)
+  - Added note: tables are manual, hardware detection works automatically
 
-Audyt USB (2026-09-19/20, noc):
-  - Wyjasnienie "czesc USB wspierana, czesc nie":
-    1) wspierane = zrodla tbs*.c w drzewie TBS + wpis w custom Makefile skryptu
-    2) zaplanowane = zrodla ISTNIEJA w drzewie (5230, 5530, 5922SE, 5927, 5931),
-       ale nie sa jeszcze wlaczone do builda (niezweryfikowane na 7.x)
-    3) BUG: skrypt odwolywal sie do tbs5920.o/tbs5922.o, ktorych NIE MA
-       w drzewie TBS -> kazdy build usb/dvb-usb konczyl sie bledem
-       "No rule to make target". Usuniete fikcyjne wpisy (fix, nie utrata
-       funkcjonalnosci - nigdy nie mogly sie zbudowac).
-  - Po fixie: 15 modulow USB, wszystkie ze zrodlami w drzewie.
-  - README: QBox2/2CI/22/S2 przeniesione do wspieranych, tabela planned
-    skorygowana.
+USB audit (2026-09-19/20, night):
+  - Explanation of "partly supported, partly not" USB:
+    1) supported = tbs*.c sources in the TBS tree + entry in the script's
+       custom Makefile
+    2) planned = sources EXIST in the tree (5230, 5530, 5922SE, 5927, 5931)
+       but were not enabled in the build (not verified on 7.x)
+    3) BUG: the script referenced tbs5920.o/tbs5922.o which DO NOT exist
+       in the TBS tree -> every usb/dvb-usb build failed with
+       "No rule to make target". Removed the bogus entries (a fix, not a
+       feature loss - they could never have built).
+  - After the fix: 15 USB modules, all with sources in the tree.
+  - README: QBox2/2CI/22/S2 moved to supported, planned table corrected.
 
-Audyt "bazujemy na tbsdtv/linux_media" (2026-09-20):
-  - Repo tbsdtv/linux_media ma TYLKO 3 branche: latest (2026-07, utrzymywany),
-    master (2025-03, stary, tasklety - nie zbuduje sie na 7.x), gse (DVB-GSE).
-  - Branch "testing" NIE ISTNIEJE -> mapowanie dev->testing i flaga --testing
-    konczyly sie bledem "Remote branch testing not found". BUG od v19.
-  - FIX: domyslnie wszedzie "latest"; przed clone skrypt waliduje branch
-    przez git ls-remote --heads, wypisuje dostepne branche i wypada na
-    "latest" (lub error przy wymuszonym --branch).
-
-Weryfikacja markerow patchy na latest TBS (2026-09-20):
-  - Sprawdzono aktualny branch latest tbsdtv/linux_media (commit 2026-07-24)
-    pod katem markerow z kernel-patches.sh:
-    dmxdev.c: from_timer, del_timer, dvb_vb2_init (3-arg x2) - WSZYSTKIE OBECNE
-    avl6882.h: IS_REACHABLE(CONFIG_DVB_AVL6882) - OBECNY
-    cxd2820r_core.c: "static void cxd2820r_gpio_set" + bare return - OBECNE
-    mxl58x.c: nie weryfikowano (duzy plik), patche idempotentne
-  - Wniosek: kernel-patches.sh v19-dev jest w pelni aktualny na latest.
-  - Bonus: ostatni commit TBS (si2183.c, APSK constants) to zgodnosc z UAPI
-    kernela 7.x - budowa si2183 powinna isc czystiej.
-
-Wlaczenie 5 tunerow USB (2026-09-20):
-  - Do custom Makefile usb/dvb-usb dodano: tbs5230, tbs5530, tbs5922se,
-    tbs5927, tbs5931 (zrodla potwierdzone w drzewie TBS latest + wpisy
-    w Makefile TBS). Razem 20 modulow USB.
-  - Standardy (z Kconfig TBS): 5230=T/T2/C, 5530=S/S2/T/T2/C,
+Enabling 5 USB tuners (2026-09-20):
+  - Added to the custom usb/dvb-usb Makefile: tbs5230, tbs5530, tbs5922se,
+    tbs5927, tbs5931 (sources confirmed in TBS latest tree + entries in the
+    TBS Makefile). 20 USB modules total.
+  - Standards (from TBS Kconfig): 5230=T/T2/C, 5530=S/S2/T/T2/C,
     5922SE=S/S2/S2X, 5927=S/S2, 5931=S/S2/S2X.
-  - UWAGA: kompilacja zweryfikowana skladniowo (bash -n); realny build
-    na kernelu 7.x do przetestowania na docelowym systemie.
-  - README: przeniesione do wspieranych, tabela planned oczyszczona.
+  - NOTE: compilation verified syntactically (bash -n); real build on
+    kernel 7.x still to be tested on the target system.
+  - README: moved to supported, planned table cleaned up.
 
-Weryfikacja wpisu "PCIe Capture 6301T, 6302T, 690a" (2026-09-20):
-  - Pochodzenie: README main v18 (AI) - przeniesione bez weryfikacji.
-  - WERYFIKACJA: karty istnieja naprawde (TBS6301T/6302T HDMI encoding
-    PCIe capture - datasheet TBS; TBS690A 4x DVB-ASI - pciex.net).
-  - Sterowniki ISTNIEJA w drzewie TBS:
+TBS branch audit ("we base on tbsdtv/linux_media", 2026-09-20):
+  - tbsdtv/linux_media has ONLY 3 branches: latest (2026-07, maintained),
+    master (2025-03, stale, tasklets - will not build on 7.x), gse (DVB-GSE).
+  - Branch "testing" DOES NOT EXIST -> the dev->testing mapping and the
+    --testing flag failed with "Remote branch testing not found". BUG
+    present since v19.
+  - FIX: default everywhere is "latest"; before cloning the script validates
+    the branch via git ls-remote --heads, lists available branches and
+    falls back to "latest" (or errors when --branch was forced).
+
+Marker verification on TBS latest (2026-09-20):
+  - Checked current tbsdtv/linux_media latest branch (commit 2026-07-24)
+    against markers from kernel-patches.sh:
+    dmxdev.c: from_timer, del_timer, dvb_vb2_init (3-arg x2) - ALL PRESENT
+    avl6882.h: IS_REACHABLE(CONFIG_DVB_AVL6882) - PRESENT
+    cxd2820r_core.c: "static void cxd2820r_gpio_set" + bare return - PRESENT
+    mxl58x.c: not verified (large file), patches are idempotent
+  - Conclusion: kernel-patches.sh v19-dev is fully current on latest.
+  - Bonus: the last TBS commit (si2183.c, APSK constants) is uapi
+    compatibility with kernel 7.x - si2183 build should be cleaner.
+
+Verification of the "PCIe Capture 6301T, 6302T, 690a" entry (2026-09-20):
+  - Origin: main README v18 (AI-generated) - carried over without checking.
+  - VERIFIED: the cards are real (TBS6301T/6302T HDMI encoding PCIe
+    capture - TBS datasheet; TBS690A 4x DVB-ASI - pciex.net).
+  - Drivers EXIST in the TBS tree:
     pci/tbscapture  -> tbs_pcie-cap.ko ("TBS PCIe HDMI/SDI capture")
     pci/tbscapture2 -> tbs_pcie2-cap.ko ("TBS PCIex2 HDMI capture",
-                       x86-only, -msse/-msse2, masa kodu konwersji libyuv)
-  - "Planned" = instalator ich nie buduje (to V4L2, nie DVB; tbscapture2
-    tylko x86). Wpis w README skorygowany na zweryfikowany.
-  - TODO: tabela modulatorow (TBSMOD) tez do weryfikacji w zrodlach tbsmod.
+                       x86-only, -msse/-msse2, large libyuv-derived code)
+  - "Planned" = the installer does not build them (V4L2, not DVB;
+    tbscapture2 x86-only). README entry corrected to verified text.
+  - Note: the capture driver tbsmod also exists ("TBS PCIe mod cards",
+    pci/tbsmod, tbsmod.c ~90KB) - actual modulator cards from TBS.
 
-Identyfikacja sprzetu uzytkownika (HTPC, ASUS PRIME B450M-A, AMD Raven):
-  - 03:00.0 1131:7160 sub 13c2:3010 = Technotrend TT-budget S2-4100 (klon TBS6922, SAA716x)
-  - 05:00.0 544d:6178 sub 6902:0002 = TBS6902 (dual DVB-S/S2, TBSECP3)
-  - Brak urzadzen USB.
-  - README: poprawiona nazwa "TT4100" -> "TT-budget S2-4100".
-  - Po jutrzejszym buildzie: "dmesg | grep frontend" da dokladne nazwy
-    zaladowanych frontendow -> na tej podstawie wybieramy plik do audytu
-    wydajnosciowego.
-
-Weryfikacja tabeli "modulatory" w tbsecp3-cards.c (2026-09-20, ~00:10):
-  - Ustalenie: sekcja "modulatory TBSMOD" w README byla BLEDNA.
-    Wszystkie karty 63xx w tbsecp3-cards.c to HDMI capture / 4K HDMI encoder
+Modulator table verification in tbsecp3-cards.c (2026-09-20, ~00:10):
+  - Finding: the README "TBSMOD modulators" section was WRONG.
+    All 63xx cards in tbsecp3-cards.c are HDMI capture / 4K HDMI encoders
     (TBS6301="6301 HDMI Capture", 6302/6304/6308 = capture/encoder,
     6312X/6304X/6302X = "4K@30FPS HDMI PCIe Encoder"),
-    6322/6324 = "3G-SDI PCIe Encoder", 6331 i 690a = "ASI Capture".
-    ZADNA z nich nie jest modulatorem. Wpis "6331 DVB-C modulator"
-    w README to blad - to karta ASI capture.
-  - README poprawione: sekcja "PCIe - capture / encoder (NOT built)",
-    zrodla nazw: tbsecp3-cards.c (latest).
-  - TODO: jaki jest sens istnienia katalogu pci/tbsmod w drzewie TBS?
-    (Kconfig: "TBS PCIe mod cards") - do sprawdzenia, czy to faktycznie
-    sterownik modulatorow pod inne karty.
-  - TBS6902 potwierdzone w tbsecp3-cards.c (2 adaptery, DVB-S/S2).
-    Frontend chip -> w tbsecp3-dvb.c (attach) - do pobrania.
+    6322/6324 = "3G-SDI PCIe Encoder", 6331 and 690a = "ASI Capture".
+    NONE of them is a modulator. The "6331 DVB-C modulator" README entry
+    was wrong - it is an ASI capture card.
+  - README corrected: section "PCIe - capture / encoder (NOT built)",
+    names sourced from tbsecp3-cards.c (latest).
+  - TBS6902 confirmed in tbsecp3-cards.c (2 adapters, DVB-S/S2).
+    Frontend chip -> in tbsecp3-dvb.c (attach) - to be fetched.
 
-Optymalizacja wydajnosciowa v1 - si2183.c (2026-09-20, ~00:20):
-  Audyt statyczny si2183.c z latest wykazal:
-  1) si2183_get_tune_settings: min_delay_ms = 900 -> CIEMNY wait po kazdym
-     zapie. Firmware Si2183 raportuje lock szybko -> 900ms to czysta
-     latencja. Patch: 300ms. NAJWIĘKSZY zysk (do ~0.6s na zap).
-  2) si2183_tune: *delay = HZ/5 (200ms) -> HZ/10 (100ms) - czestszy odczyt
-     statusu przy szukaniu locka (~100ms srednio szybciej wykrywanie).
-  3) [bez zmian] cmd_execute busy-polluje I2C bez sleepa - zostaje,
-     dodanie usleep dodaloby latencje do kazdej komendy.
-  4) [bez zmian] firmware download przy pierwszym locie - protokol sprzetowy.
-  Oba patche w kernel-patches.sh (idempotentne, markery unikalne).
-  DO PRZETESTOWANIA A/B na sprzecie: czas zapu przed/po; przy niestabilnym
-  locku revert patcha #1.
-  UWAGA: potwierdzic jaki frontend ma realnie TBS6902:
-    grep -n -A14 "TBS6902" /usr/src/tbs-drivers/drivers/media/pci/tbsecp3/tbsecp3-dvb.c
-  (jesli to nie si2183, patche v1 nie dotkna tej karty - wtedy audyt
-  wlasciwego frontenda, np. stv091x/m88rs6060).
+User hardware identification (HTPC, ASUS PRIME B450M-A, AMD Raven):
+  - 03:00.0 1131:7160 sub 13c2:3010 = Technotrend TT-budget S2-4100 (TBS6922 clone, SAA716x)
+  - 05:00.0 544d:6178 sub 6902:0002 = TBS6902 (dual DVB-S/S2, TBSECP3)
+  - No USB devices.
+  - README: corrected name "TT4100" -> "TT-budget S2-4100".
+  - After the build: "dmesg | grep frontend" gives exact loaded frontend
+    names -> basis for choosing the performance-audit target.
+  - CONFIRMED via lsmod: cx24117 (saa716x_tbs_dvb), gx1133 (tbsecp3),
+    tas2101 (LNB, both), av201x (tuner, all 3). No si2183/stv0900.
 
-Audyt wydajnosciowy v2 - gx1133.c + cx24117.c (2026-09-20, ~00:30):
-  (obie karty zweryfikowane przez lsmod uzytkownika: gx1133=TBS6902,
-   cx24117=TT S2-4100/TBS6922, oba z tunerem av201x, LNB tas2101)
+Performance audit v1 - si2183.c (2026-09-20, ~00:20):
+  Static audit of si2183.c from latest found:
+  1) si2183_get_tune_settings: min_delay_ms = 900 -> BLIND wait after every
+     zap. Si2183 firmware reports lock quickly -> 900ms is pure latency.
+     Patch: 300ms. BIGGEST gain (up to ~0.6s per zap).
+  2) si2183_tune: *delay = HZ/5 (200ms) -> HZ/10 (100ms) - more frequent
+     status reads while searching (~100ms faster detection on average).
+  3) [unchanged] cmd_execute busy-polls I2C without sleeping - kept,
+     adding usleep would add latency to every command.
+  4) [unchanged] firmware download on first attach - hardware protocol.
+  Both patches in kernel-patches.sh (idempotent, unique markers).
+  NOTE: user's cards do NOT use si2183 - v1 kept for other cards only.
+
+Performance audit v2 - gx1133.c + cx24117.c (2026-09-20, ~00:30):
+  (both cards verified via user's lsmod: gx1133=TBS6902,
+   cx24117=TT S2-4100/TBS6922, both with av201x tuner, tas2101 LNB)
   gx1133.c (TBS6902):
-   - initfe: 4x reset msleep(10) -> msleep(3)      [jednorazowo przy open]
-   - set_frontend: tuner PLL settle msleep(50) -> 10 (AV201x lock ~1-2ms)
-   - lock poll: 20ms x 15 -> 10ms x 30 (ten sam worst-case 300ms)
+   - initfe: 4x reset msleep(10) -> msleep(3)      [once per adapter open]
+   - set_frontend: tuner PLL settle msleep(50) -> 10 (AV201x locks in ~1-2ms)
+   - lock poll: 20ms x 15 -> 10ms x 30 (same 300ms worst case)
    - tune poll *delay HZ/5 -> HZ/10
   cx24117.c (TBS6922):
    - cmd_execute_nolock: EXECUTE busy-wait msleep(20) -> usleep_range(900,1100)
-     KAZDA komenda FW placila ~10-19ms martwego ticku; zap = 4-6 komend
-   - set_frontend lock wait: 20ms x 50 -> 10ms x 100 (ten sam bound 1s,
-     wazne przy DVB-S2 ROLLOFF_AUTO = do 3 prob, worst-case byl 3x1s)
+     EVERY FW command paid ~10-19ms dead tick; a zap issues 4-6 commands
+   - set_frontend lock wait: 20ms x 50 -> 10ms x 100 (same 1s bound,
+     matters for DVB-S2 ROLLOFF_AUTO = up to 3 attempts, worst case was 3x1s)
    - tune poll *delay HZ/5 -> HZ/10
-  NIE ruszono (spec/ryzyko): msleep(100) w set_voltage (DISEqC spec),
-  diseqc send/burst timings, root_2_gold (rzadko wywolywane), fw download.
-  Oczekiwany zysk realny: ~150-350ms na zap (zaleznie od sciezki),
-  wiekszosc z cx24117 EXECUTE poll + gx1133 PLL settle + poll granularity.
-  Wszystko A/B testowalne; revert = usuniecie wpisu z kernel-patches.sh.
+  NOT touched (spec/risk): msleep(100) in set_voltage (DiSEqC spec),
+  diseqc send/burst timings, root_2_gold (rarely called), fw download.
+  Expected real gain: ~150-350ms per zap (path dependent),
+  mostly from cx24117 EXECUTE poll + gx1133 PLL settle + poll granularity.
+  All A/B testable; revert = removing the block from kernel-patches.sh.
 
-Bezpieczenstwo - gate TBS_PERF=1 (2026-09-20, ~00:35):
-  - User pytal "czy jestem pewien ze to nie zaszkodzi" - odpowiedz:
-    nie w 100%; najwyzsze ryzyko = gx1133 tuner settle 50->10ms
-    (fizyka PLL na slabych transponderach), reszta niskie/bardzo niskie.
-  - ZADNE patche nie ruszaja sciezki danych ani rejestrow - tylko timing.
-  - DECYZJA: wszystkie patche wydajnosciowe (v1 si2183 + v2 gx1133/cx24117)
-    przeniesione za gate:  TBS_PERF=1 sudo bash install_tbsdtv-smart.sh
-    Domyslnie OFF -> zwykly build = czyste zrodla TBS.
-  - UWAGA techniczna: revert wymaga flagi OFF + rm -rf /usr/src/tbs-drivers
-    (patche modyfikuja zrodla na dysku, sam rebuild nie przywraca oryginalu).
-  - Plan A/B: build 1 bez TBS_PERF (baseline sanity), build 2 z TBS_PERF=1,
-    pomiar zapu przed/po, decyzja czy zostaje.
+Safety - TBS_PERF=1 gate (2026-09-20, ~00:35):
+  - User asked "are you sure this will not cause harm" - the honest answer:
+    not 100%; highest risk = gx1133 tuner settle 50->10ms (PLL physics on
+    weak transponders), the rest low/very low.
+  - NO patch touches the data path or registers - only timing.
+  - DECISION: all performance patches (v1 si2183 + v2 gx1133/cx24117)
+    moved behind a gate:  TBS_PERF=1 sudo bash install_tbsdtv-smart.sh
+    Default OFF -> a plain build uses vanilla TBS sources.
+  - TECHNICAL NOTE: revert requires the flag OFF + rm -rf /usr/src/tbs-drivers
+    (patches modify the sources on disk, a rebuild alone does not restore
+    the originals).
+  - A/B plan: build 1 without TBS_PERF (baseline sanity), build 2 with
+    TBS_PERF=1, zap-time measurement before/after, decide whether it stays.
