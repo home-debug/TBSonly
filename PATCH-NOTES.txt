@@ -15,7 +15,8 @@ Co nowego w v20-dev:
   4. Fix parsowania --branch NAME (wczesniej wystepowal blad "Unknown argument")
   5. Sekcja Usage w README: pelna instrukcja clone + git checkout dev
 
-Uwaga: skrypt w paczce nie zawiera kernel-patches.sh - ten plik nie zmienil sie.
+Paczka zawiera tez kernel-patches.sh (bez zmian wzgledem v19-dev) - komplet plikow
+do podmiany na branchu dev.
 Przed wypchnieciem: bash -n install_tbsdtv-smart.sh (sprawdzone, OK).
 
 Audyt wsteczny (2026-09-19, wieczor):
@@ -27,3 +28,11 @@ Audyt wsteczny (2026-09-19, wieczor):
     8 targetow budowania, USB dvb-usb, -j$(nproc), --branch/--testing,
     TBS_BRANCH=, czyszczenie starych modulow, dry-run, check 7.0+,
     lancuch Module.symvers, izolowany build dir, cleanup trap, depmod.
+
+README (2026-09-20):
+  - Kompletna tabela kart PCIe TBSECP3 (35 modeli, wszystkie warianty SE/H/X)
+    + SAA716x (22 modele + Technotrend TT4100) + modulatory TBSMOD + USB
+  - Przywrocone sekcje z main: "Compiled frontend and tuner modules"
+    i "Not yet supported (planned)" (skorygowane - USB/modulatory czesciowo
+    juz wspierane na dev)
+  - Dodana nota: tabele sa reczne, detekcja sprzetu dziala automatycznie

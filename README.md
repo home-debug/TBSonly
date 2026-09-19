@@ -10,45 +10,125 @@ The generated code is verified and tested by a human.
 
 ## Supported cards
 
-### PCIe
+### PCIe — TBSECP3 bridge
 
-| Model | Type | Status |
-|---|---|---|
-| TBS 6205, 6209, 6216, 6281SE/TD | DVB-T/T2/C | Supported |
-| TBS 6290SE/TD | DVB-T/T2/C + ISDB-T | Supported |
-| TBS 6522/H, 6528 | DVB-S/S2 + DVB-T/T2/C | Supported |
-| TBS 6590/SE | DVB-S/S2 + DVB-T/T2/C | Supported |
-| TBS 6902/SE, 6903/X, 6904/X/SE, 6905, 6908 | DVB-S/S2 | Supported |
-| TBS 6909/X/SE, 6910/SE/X, 6912, 6916 | DVB-S/S2 + CI | Supported |
-| TBS 6704 | ISDB-T | Supported |
-| TBS 6301/SE, 6302SE/X/T/RV, 6304/X/T/RV, 6308/X, 6312X | DVB-S/S2 modulator | Supported |
-| TBS 6322, 6324 | ISDB-T modulator | Supported |
-| TBS 6331 | DVB-C modulator | Supported |
-| TBS 6504/H, 6508 | DVB-S/S2X + DVB-T/T2/C | Supported |
-| TBS 6814, 6514 | DVB-T/T2/C | Supported |
-| TBS 7230 | ATSC | Supported |
-| TBS 7901 | DVB-S/S2 + CI | Supported |
-| TBS 6280, 6281, 6284, 6285 | DVB-T/T2/C (SAA716x) | Supported |
-| TBS 6220, 6221 | DVB-T/T2/C (SAA716x) | Supported |
-| TBS 6922, 6923, 6925 | DVB-S/S2 (SAA716x) | Supported |
-| TBS 6982/SE, 6983, 6984, 6985 | DVB-S/S2 (SAA716x) | Supported |
-| TBS 6991/SE | DVB-S/S2 + CI (SAA716x) | Supported |
-| TBS 7220 | DVB-S/S2 (SAA716x) | Supported |
-| Technotrend TT4100 | DVB-S/S2 (TBS6922 clone) | Supported |
+Driver: `tbsecp3.ko`
+
+| Model | Standard |
+|---|---|
+| TBS 6205 | DVB-T/T2/C |
+| TBS 6205SE | DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
+| TBS 6209 | DVB-T/T2/C/C2, ISDB-T — Octa |
+| TBS 6209SE | DVB-T/T2/C/C2, ISDB-T/C, ATSC — Octa |
+| TBS 6216 | DVB-T/T2/C, ISDB-T, ATSC 1.0 — Hex |
+| TBS 6281TD | DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
+| TBS 6290SE | DVB-T/T2/C + 2×CI |
+| TBS 6504 | DVB-S/S2/S2X/T/T2/C/C2/ISDB-T |
+| TBS 6504H | Quad DVB-S/S2x + Quad DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
+| TBS 6508 | DVB-S/S2/S2X/T/T2/C (QAM-A/B/C)/C2/ISDB-T |
+| TBS 6514 | DTMB — Quad |
+| TBS 6522 | DVB-S/S2/S2X/T/T2/C/C2/ISDB-T |
+| TBS 6522H | Dual DVB-S/S2x + Dual DVB-T/T2/C, ISDB-T/C, ATSC 1.0 |
+| TBS 6528 | DVB-S/S2/S2X/T/T2/C/C2/ISDB-T + CI |
+| TBS 6590SE | DVB-S/S2/S2X/T/T2/C/C2 + 2×CI |
+| TBS 6704 | ATSC/QAM-B — Quad |
+| TBS 6814 | ISDB-T — Quad |
+| TBS 6902 | DVB-S/S2 |
+| TBS 6902SE | DVB-S/S2/S2x |
+| TBS 6903 | DVB-S/S2 |
+| TBS 6904 | DVB-S/S2 |
+| TBS 6904se | DVB-S/S2/S2x |
+| TBS 6904x | DVB-S/S2/S2X |
+| TBS 6905 | DVB-S/S2 |
+| TBS 6908 | DVB-S/S2 |
+| TBS 6909 | DVB-S/S2 |
+| TBS 6909SE | DVB-S/S2/S2x — Octa |
+| TBS 6910 | DVB-S/S2 + 2×CI |
+| TBS 6910SE | DVB-S/S2/S2x + 2×CI |
+| TBS 6910X | DVB-S/S2/S2X + 2×CI |
+| TBS 6916 | DVB-S/S2/S2X — Octa |
+| TBS 7230 | DVB-T/T2/C/C2, ISDB-T/C, ATSC — Octa |
+| TBS 7901 | DVB-S/S2/S2x |
+
+### PCIe — SAA716x bridge
+
+Driver: `saa716x_tbs-dvb.ko`
+
+| Model | Standard |
+|---|---|
+| TBS 6220 | DVB-T |
+| TBS 6221 | DVB-T |
+| TBS 6280 | DVB-T/T2/C — Dual |
+| TBS 6281 | DVB-T/T2/C — Dual |
+| TBS 6284 | DVB-T/T2/C — Quad |
+| TBS 6285 | DVB-T/T2/C — Quad |
+| TBS 6290 | DVB-T/T2/C — Dual |
+| TBS 6922 | DVB-S/S2 |
+| TBS 6923 | DVB-S/S2 |
+| TBS 6925 | DVB-S/S2 |
+| TBS 6982 | DVB-S/S2 — Dual |
+| TBS 6982SE | DVB-S/S2 — Dual |
+| TBS 6983 | DVB-S/S2 — Dual |
+| TBS 6984 | DVB-S/S2 — Quad |
+| TBS 6985 | DVB-S/S2 — Quad |
+| TBS 6991 | DVB-S/S2 — Dual + CI |
+| TBS 6991SE | DVB-S/S2 — Dual + CI |
+| TBS 7220 | DVB-T |
+| Technotrend TT4100 | DVB-S/S2 (TBS6922 clone) |
+
+### PCIe — modulators (TBSMOD)
+
+Driver: `tbsmod.ko` / `tbsdtv` modulator targets (`pci/tbsmod`)
+
+| Model | Type |
+|---|---|
+| TBS 6301, 6301SE | DVB-S/S2 modulator |
+| TBS 6302SE/X/T/RV | DVB-S/S2 modulator |
+| TBS 6304/X/T/RV | DVB-S/S2 modulator |
+| TBS 6308/X | DVB-S/S2 modulator |
+| TBS 6312X | DVB-S/S2 modulator |
+| TBS 6322, 6324 | ISDB-T modulator |
+| TBS 6331 | DVB-C modulator |
 
 ### USB
 
-| Model | Type | Status |
+Driver: `dvb-usb-*` family (`usb/dvb-usb` target)
+
+| Model | Type |
+|---|---|
+| TBS 5220 | DVB-T/T2/C |
+| TBS 5520SE | DVB-S/S2 + DVB-T/T2/C |
+| TBS 5580 | DVB-S/S2 + DVB-T/T2/C |
+| TBS 5590 | DVB-S/S2 + DVB-T/T2/C |
+| TBS 5880, 5881 | DVB-T/T2/C + ISDB-T |
+| TBS 5920, 5922, 5925 | DVB-S/S2 |
+| TBS 5930 | DVB-S/S2X |
+| TBS 5301 | DVB-S/S2 |
+| TBS QBox series | DVB-S/S2 |
+
+### Compiled frontend and tuner modules
+
+Shared modules used across the cards above:
+
+**Frontends** (`dvb-frontends/`):
+`avl6882`, `cx24117`, `cxd2820r`, `cxd2878`, `dib9000`, `gx1133`, `gx1503`,
+`isl6422`, `lgs8gl5`, `lnbh29`, `m88rs6060`, `mb86a16`, `mn88436`, `mn88443x`,
+`mtv23x`, `mxl58x`, `s5h1432`, `si2168`, `si2183`, `stb0899`, `stid135`,
+`stv0900`, `stv091x`, `tas2101`, `tas2971`, `tbs_priv`
+
+**Tuners** (`tuners/`):
+`av201x`, `si2157`, `stv6120`, `tda18212`
+
+### Not yet supported (planned)
+
+| Category | Cards | Status |
 |---|---|---|
-| TBS 5220 | DVB-T/T2/C | Supported |
-| TBS 5520SE | DVB-S/S2 + DVB-T/T2/C | Supported |
-| TBS 5580 | DVB-S/S2 + DVB-T/T2/C | Supported |
-| TBS 5590 | DVB-S/S2 + DVB-T/T2/C | Supported |
-| TBS 5880, 5881 | DVB-T/T2/C + ISDB-T | Supported |
-| TBS 5920, 5922, 5925 | DVB-S/S2 | Supported |
-| TBS 5930 | DVB-S/S2X | Supported |
-| TBS 5301 | DVB-S/S2 | Supported |
-| TBS QBox series | DVB-S/S2 | Supported |
+| USB | TBS 5230, 5520, 5530, 5922SE, 5927, 5931, QBox2, QBox2CI, QBox22, QBoxS2 | Planned |
+| PCIe Capture | TBS 6301T, 6302T, 690a | Planned |
+
+> **Note:** the card tables above are maintained manually. The script itself
+> detects your actual hardware automatically from the TBS source tree at
+> build time — the table is for reference only.
 
 ## Requirements
 
