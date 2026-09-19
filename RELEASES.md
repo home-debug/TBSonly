@@ -1,5 +1,25 @@
 # Release Notes
 
+## v20-dev (2026-09-19) — DEVELOPMENT / UNSTABLE
+
+> ⚠️ **This is a development version.** It contains experimental features and may not work correctly on all systems. Use the `main` branch for stable releases.
+
+### New features
+- **Script branch detection** — the installer detects which branch of this repository it runs from (`main` / `dev` / detached / zip download) and shows it in the startup header and log
+- **Automatic TBS branch mapping** — running from `dev` defaults to the TBS `testing` branch, running from `main` (or unknown) defaults to `latest`; still overridable with `--branch`, `--testing` or `TBS_BRANCH=...`
+- **Update check with dev warning** — on startup the script fetches origin and compares your checkout against `origin/dev`; if `dev` is ahead, it offers to switch, with a clear warning that `dev` is a development version that may not work; on confirmation it checks out `dev`, pulls and re-runs itself
+  - `--dry-run` only prints the switch commands
+  - non-interactive shells (cron/pipe) get manual instructions instead of a prompt
+
+### Changes
+- Header log line now distinguishes `TBS branch:` (tbsdtv/linux_media) from `Script:` (this repo)
+- README: full clone-and-checkout instructions in the Usage section, "How it works" updated
+
+### Fixes
+- `--branch NAME` argument parsing fixed (previously the branch name was consumed incorrectly and could trigger "Unknown argument")
+
+---
+
 ## v19-dev (2025-09-19) — DEVELOPMENT / UNSTABLE
 
 > ⚠️ **This is a development version.** It contains experimental features and may not work correctly on all systems. Use the `main` branch for stable releases.

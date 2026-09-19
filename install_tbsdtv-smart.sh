@@ -1,31 +1,41 @@
 #!/usr/bin/env bash
-# install_tbsdtv-smart v19-dev
+# install_tbsdtv-smart v20-dev
 # WARNING: This is a development version. It may not work correctly.
-# Changes from v18:
-#   - Root privilege check
-#   - Cross-distro kernel source auto-detection (Debian, Fedora, Arch, openSUSE)
-#   - Hardware detection (cosmetic, parses TBS source tree, zero hardcoded maps)
-#   - Parallel build (-j$(nproc))
-#   - Added usb/dvb-usb for TBS USB tuners
-#   - --branch / --testing flags for TBS repo selection
+# Changes from v19:
+#   - Self-branch detection (main/dev) shown in header and log
+#   - Auto TBS branch mapping: dev -> testing, main/other -> latest
+#   - Update check: proposes switching to newer 'dev' with warning
+#   - Fixed --branch argument parsing (works with a value, e.g. --branch main)
 set -euo pipefail
 
 DRY_RUN=0
-TBS_BRANCH="${TBS_BRANCH:-latest}"
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run) DRY_RUN=1 ;;
-        --branch)
+TBS_BRANCH="${TBS_BRANCH:-}"   # resolved after script-branch detection
+TBS_BRANCH_FORCED=0
+ORIG_ARGS=("$@")
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=1
             shift
-            TBS_BRANCH="$1"
             ;;
-        --testing) TBS_BRANCH="testing" ;;
+        --branch)
+            [[ $# -ge 2 ]] || { echo "ERROR: --branch requires a branch name"; exit 1; }
+            TBS_BRANCH="$2"
+            TBS_BRANCH_FORCED=1
+            shift 2
+            ;;
+        --testing)
+            TBS_BRANCH="testing"
+            TBS_BRANCH_FORCED=1
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [--dry-run] [--branch NAME|--testing]"
             echo ""
             echo "Options:"
             echo "  --dry-run       Show what would be done without modifying anything"
-            echo "  --branch NAME   Use specific TBS repo branch (default: latest)"
+            echo "  --branch NAME   Use specific TBS repo branch (default: testing on 'dev', latest otherwise)"
             echo "  --testing       Shortcut for --branch testing"
             echo "  -h, --help      Show this help message"
             echo ""
@@ -33,7 +43,10 @@ for arg in "$@"; do
             echo "  TBS_BRANCH      Override default branch (e.g. TBS_BRANCH=main $0)"
             exit 0
             ;;
-        *) echo "Unknown argument: $arg"; exit 1 ;;
+        *)
+            echo "Unknown argument: $1"
+            exit 1
+            ;;
     esac
 done
 
@@ -49,6 +62,27 @@ LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
 
 # Always build all TBS targets
 TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod" "usb/dvb-usb")
+
+# ===========================================================================
+# Detect which branch of THIS repo (TBSonly) we run from,
+# then pick the matching TBS source branch automatically:
+#   TBSonly dev  -> tbsdtv/linux_media testing
+#   TBSonly main -> tbsdtv/linux_media latest
+# ===========================================================================
+SELF_BRANCH="unknown"
+SELF_COMMIT=""
+if [[ -d "$SCRIPT_DIR/.git" ]]; then
+    SELF_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    SELF_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)
+    [[ "$SELF_BRANCH" == "HEAD" ]] && SELF_BRANCH="detached"
+fi
+
+if [[ -z "$TBS_BRANCH" ]]; then
+    case "$SELF_BRANCH" in
+        dev) TBS_BRANCH="testing" ;;
+        *)   TBS_BRANCH="latest" ;;
+    esac
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG"; }
@@ -68,7 +102,24 @@ fi
 
 [[ "$DRY_RUN" -eq 1 ]] && warn "DRY-RUN MODE - no files will be modified"
 echo "=== $(date) ===" > "$LOG"
-echo "  Kernel: $KVER / Branch: $TBS_BRANCH / DryRun: $DRY_RUN" | tee -a "$LOG"
+echo "  Kernel: $KVER / TBS branch: $TBS_BRANCH / Script: ${SELF_BRANCH}${SELF_COMMIT:+ $SELF_COMMIT} / DryRun: $DRY_RUN" | tee -a "$LOG"
+
+case "$SELF_BRANCH" in
+    dev)
+        warn "  DEVELOPMENT version of this script (branch: dev)."
+        warn "  It may not work correctly. For stable releases use 'main':"
+        warn "    git checkout main && git pull origin main"
+        BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
+        [[ "$BEHIND" -gt 0 ]] && warn "  Local dev is $BEHIND commit(s) behind origin/dev — run: git pull origin dev"
+        ;;
+    main)
+        info "  Stable branch (main) - OK."
+        ;;
+    *)
+        warn "  Could not determine script branch (zip download or detached HEAD?)."
+        warn "  Clone the repo to get updates: git clone https://github.com/home-debug/TBSonly.git"
+        ;;
+esac
 
 ker_ge() { [[ "$KMAJ" -gt "$1" ]] || { [[ "$KMAJ" -eq "$1" ]] && [[ "$KMIN" -ge "$2" ]]; }; }
 
@@ -178,6 +229,68 @@ detect_kernel_sources() {
         KHEADERS_COMMON="$KBUILD"
     fi
     info "  Headers source: $KHEADERS_COMMON"
+}
+
+# ===========================================================================
+# Check upstream for a newer 'dev' branch and offer to switch
+# (users normally run 'main'; dev is development — may not work)
+# ===========================================================================
+check_for_dev_update() {
+    [[ -d "$SCRIPT_DIR/.git" ]] || return 0
+
+    step "Checking for updates on origin..."
+
+    git -C "$SCRIPT_DIR" fetch origin --quiet 2>/dev/null \
+        || { warn "  Could not reach origin — continuing without update check."; return 0; }
+
+    # Is there a dev branch upstream at all?
+    if ! git -C "$SCRIPT_DIR" rev-parse --verify --quiet origin/dev >/dev/null; then
+        info "  No 'dev' branch on origin — you are up to date."
+        return 0
+    fi
+
+    # Is origin/dev actually NEWER (ahead) than what we run now?
+    local ahead
+    ahead=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
+
+    if [[ "$ahead" -eq 0 ]]; then
+        info "  'dev' is not ahead of your current branch — nothing newer available."
+        return 0
+    fi
+
+    local dev_date cur_date
+    dev_date=$(git -C "$SCRIPT_DIR" log -1 --format='%cd' --date=short origin/dev 2>/dev/null || echo "?")
+    cur_date=$(git -C "$SCRIPT_DIR" log -1 --format='%cd' --date=short HEAD 2>/dev/null || echo "?")
+
+    warn "  Newer version available on 'dev': $ahead new commit(s) since $dev_date"
+    warn "  You are running '$SELF_BRANCH' (current commit: $cur_date)"
+    echo -e "${YELLOW}  +----------------------------------------------------+"
+    echo -e "  |  WARNING: 'dev' is a DEVELOPMENT version.          |"
+    echo -e "  |  It may NOT work correctly.                        |"
+    echo -e "  |  Stable releases are on 'main'.                    |"
+    echo -e "  +----------------------------------------------------+${NC}"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "[DRY-RUN] Would run: git checkout dev && git pull --ff-only origin dev"
+        return 0
+    fi
+
+    if [[ -t 0 ]]; then
+        read -rp "  Switch to 'dev' and continue with the newer version? [y/N]: " ANS
+        if [[ "${ANS,,}" == "y" ]]; then
+            git -C "$SCRIPT_DIR" checkout dev 2>&1 | tee -a "$LOG"
+            git -C "$SCRIPT_DIR" pull --ff-only origin dev 2>&1 | tee -a "$LOG"
+            info "  Switched to 'dev'. Re-starting script..."
+            SELF_PATH="$SCRIPT_DIR/$(basename "$0")"
+            sleep 1
+            [[ ${#ORIG_ARGS[@]} -gt 0 ]] && exec bash "$SELF_PATH" "${ORIG_ARGS[@]}"
+            exec bash "$SELF_PATH"
+        fi
+        info "  Staying on '$SELF_BRANCH'."
+    else
+        warn "  Non-interactive shell — to switch manually run:"
+        warn "    git checkout dev && git pull origin dev"
+    fi
 }
 
 # ===========================================================================
@@ -425,6 +538,8 @@ detect_kernel_sources
 for cmd in git make gcc rsync python3; do
     command -v "$cmd" &>/dev/null || error "Missing dependency: $cmd"
 done
+
+check_for_dev_update
 
 H1="$KHEADERS_COMMON/include/media/dvb_frontend.h"
 H2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"

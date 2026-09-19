@@ -1,0 +1,29 @@
+TBSonly - paczka zmian 2026-09-19 (v20-dev)
+===========================================
+
+Zawartosc:
+  install_tbsdtv-smart.sh  - kompletny skrypt v20-dev (zastap plik na branchu dev)
+  README.md                - wersja dla branchu dev z poprawiona sekcja Usage
+  RELEASES.md              - changelog z nowym wpisem v20-dev na gorze
+
+Co nowego w v20-dev:
+  1. Detekcja wlasnego brancha (main/dev/detached/zip) - wyswietlana w naglowku i logu
+  2. Automatyczne mapowanie brancha TBS: dev -> testing, main/inne -> latest
+  3. Sprawdzanie aktualizacji: gdy origin/dev jest nowszy niz biezacy checkout,
+     skrypt proponuje przejscie na dev z wyraznym ostrzezeniem (dev moze nie dzialac);
+     po potwierdzeniu robi checkout + pull i restartuje sam siebie
+  4. Fix parsowania --branch NAME (wczesniej wystepowal blad "Unknown argument")
+  5. Sekcja Usage w README: pelna instrukcja clone + git checkout dev
+
+Uwaga: skrypt w paczce nie zawiera kernel-patches.sh - ten plik nie zmienil sie.
+Przed wypchnieciem: bash -n install_tbsdtv-smart.sh (sprawdzone, OK).
+
+Audyt wsteczny (2026-09-19, wieczor):
+  - Po audycie "nic nie usuwaj" wykryto i naprawiono przypadkowa regresje:
+    brakowalo linii TARGET_DIRS (8 katalogow budowania) - bez niej petla
+    kompilacji budowala ZERO modulow.
+  - Potwierdzono obecnosc wszystkich funkcjonalnosci v19: root check,
+    detekcja dystrybucji i zrodel kernela, detekcja sprzetu (python),
+    8 targetow budowania, USB dvb-usb, -j$(nproc), --branch/--testing,
+    TBS_BRANCH=, czyszczenie starych modulow, dry-run, check 7.0+,
+    lancuch Module.symvers, izolowany build dir, cleanup trap, depmod.

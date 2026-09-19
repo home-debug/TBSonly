@@ -64,11 +64,16 @@ The generated code is verified and tested by a human.
 | Debian / Ubuntu | `apt install linux-headers-$(uname -r)` |
 | Fedora / RHEL | `dnf install kernel-devel-$(uname -r)` |
 | Arch / Manjaro | `pacman -S linux-headers` |
-| openSUSE | `zypper in kernel-default-devel` |
+| openSUSE | `zypper in kernel-default-devel`|
 
 ## Usage
 
 ```bash
+# Clone the repository and switch to the dev branch
+git clone https://github.com/home-debug/TBSonly.git
+cd TBSonly
+git checkout dev
+
 # Standard build (uses all CPU cores automatically)
 sudo bash install_tbsdtv-smart.sh
 
@@ -85,14 +90,25 @@ sudo bash install_tbsdtv-smart.sh --branch main
 TBS_BRANCH=testing sudo bash install_tbsdtv-smart.sh
 ```
 
+If you already have the repository cloned, update it before building:
+
+```bash
+cd TBSonly
+git fetch origin
+git checkout dev
+git pull origin dev
+```
+
 ## How it works
 
 1. **Auto-detects your distribution** and locates kernel build sources (`/lib/modules/*/build`, `/usr/src/kernels/*`, etc.)
-2. **Parses TBS source tree** to detect which PCIe cards are physically present in your system (cosmetic — all modules are still built for compatibility)
-3. **Patches kernel API mismatches** via `kernel-patches.sh` (idempotent — safe to re-run)
-4. **Creates isolated build environment** with headers from both distro kernel and TBS repo
-5. **Compiles only TBS-specific modules** (dvb-core, frontends, tuners, PCIe bridges, USB tuners) — not the entire kernel tree
-6. **Installs to `/lib/modules/*/updates/tbs/`** and runs `depmod`
+2. **Detects its own branch** (`main`/`dev`) and picks the matching TBS source branch (`latest`/`testing`) automatically
+3. **Checks for updates** — if the `dev` branch on origin is newer than your current checkout, the script offers to switch (with a clear warning that `dev` may not work)
+4. **Parses TBS source tree** to detect which PCIe cards are physically present in your system (cosmetic — all modules are still built for compatibility)
+5. **Patches kernel API mismatches** via `kernel-patches.sh` (idempotent — safe to re-run)
+6. **Creates isolated build environment** with headers from both distro kernel and TBS repo
+7. **Compiles only TBS-specific modules** (dvb-core, frontends, tuners, PCIe bridges, USB tuners) — not the entire kernel tree
+8. **Installs to `/lib/modules/*/updates/tbs/`** and runs `depmod`
 
 ## Files
 
