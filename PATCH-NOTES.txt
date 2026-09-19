@@ -164,3 +164,28 @@ Safety - TBS_PERF=1 gate (2026-09-20, ~00:35):
     the originals).
   - A/B plan: build 1 without TBS_PERF (baseline sanity), build 2 with
     TBS_PERF=1, zap-time measurement before/after, decide whether it stays.
+
+Full-tree performance audit v3 (2026-09-20, ~00:55):
+  Files fetched and audited from tbsdtv/linux_media@latest:
+  - tas2101.c: lock poll 20ms/15 -> 10ms/30; HZ/5 -> HZ/10
+  - tas2971.c: STUB driver (all ops return 0, fake full lock, "lucy"
+    comment) - nothing to optimize, noted as upstream curiosity
+  - av201x.c: 2x msleep(20) per retune -> msleep(5). Found REAL BUG
+    (NOT patched, changes RF behaviour - user decision needed):
+    "bw *= 108/100;" = integer 1 -> the intended +8% bandwidth margin
+    is silently dropped. Affects all cards using av201x.
+  - si2157.c: already tight (busy-poll, usleep_range 5-10ms) - untouched
+  - stv6120.c: redundant usleep(10-12ms) after VCO cal-done -> 2-3ms
+  - si2168.c: min_delay_ms 900 -> 300 (same blind-wait class as si2183)
+  - mb86a16.c: sleeps are blind-scan measurement windows - untouched
+  - m88rs6060.c: lock wait 20ms x 150 (up to 3s blind!) -> 10ms x 300;
+    tune poll HZ/2 (500ms) -> HZ/10
+  - avl6882.c: tune poll HZ/5 -> HZ/10; DEMOD_WAIT_MS 20 -> 10
+  - stv0900_sw.c: msleeps are signal-measurement windows (blind search,
+    timing-lock checks) - untouched
+  - stv091x.c: tune poll HZ (1s!) -> HZ/10
+  All patches inside the TBS_PERF gate. Not yet audited (size): stid135/,
+  mxl58x.c, dib9000, cxd2820r (no waits in core), mtv23x, cxd2878,
+  gx1503, mn88436/43x, s5h1432, tda18212, stb0899, lnbh29, isl6422.
+  av201x bw bug report: see above - decide whether to fix
+  ("bw = bw * 108 / 100;").

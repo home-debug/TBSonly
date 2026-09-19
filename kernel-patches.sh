@@ -308,6 +308,125 @@ print("  OK: lock wait 20ms/50 -> 10ms/100")'
         "*delay = HZ / 5;" \
         's|\*delay = HZ / 5;|\*delay = HZ / 10;|'
 
+    # -----------------------------------------------------------------------
+    # Performance patch set v3 - full-tree audit (all built frontends/tuners).
+    # Applied files verified against tbsdtv/linux_media@latest.
+    # Skipped (measurement windows / spec): stv0900, mb86a16, stb0899,
+    #   cx24117 set_voltage, diseqc paths, firmware downloads.
+    # -----------------------------------------------------------------------
+    pi "v3: av201x/tas2101/si2168/stv6120/m88rs6060/avl6882/stv091x..."
+
+    # av201x (tuner in many cards; 2x msleep(20) per retune -> msleep(5);
+    # AV201x PLL locks in ~1-2 ms)
+    apply_python_patch \
+        "$SRC/drivers/media/tuners/av201x.c" \
+        "av201x: retune settle 20ms -> 5ms (x2)" \
+        "REG_TUNER_CTRL" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+old1 = "msleep(20);\n\n\t/* set bandwidth */"
+old2 = "ret |= av201x_wr(priv, REG_TUNER_CTRL, 0x96);\n\tmsleep(20);"
+n = 0
+if old1 in txt:
+    txt = txt.replace(old1, "msleep(5);\n\n\t/* set bandwidth */", 1); n += 1
+if old2 in txt:
+    txt = txt.replace(old2, "ret |= av201x_wr(priv, REG_TUNER_CTRL, 0x96);\n\tmsleep(5);", 1); n += 1
+if n == 0:
+    print("  anchors not found"); sys.exit(0)
+open(f, "w").write(txt)
+print("  OK: av201x settles patched:", n)'
+
+    # tas2101: lock poll granularity 20ms x 15 -> 10ms x 30 (same 300ms bound)
+    apply_python_patch \
+        "$SRC/drivers/media/dvb-frontends/tas2101.c" \
+        "tas2101: lock poll 20ms/15 -> 10ms/30" \
+        "for (i = 0; i<15; i++)" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+hdr = "for (i = 0; i<15; i++) {"
+i = txt.find(hdr)
+if i < 0:
+    print("  anchor not found"); sys.exit(0)
+seg = txt[i:i+700]
+if "msleep(20);" not in seg:
+    print("  loop body anchor not found"); sys.exit(0)
+seg = seg.replace("i<15", "i<30", 1).replace("msleep(20);", "msleep(10);", 1)
+open(f, "w").write(txt[:i] + seg + txt[i+700:])
+print("  OK: tas2101 poll 10ms/30")'
+
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/tas2101.c" \
+        "tas2101: tune poll HZ/5 -> HZ/10" \
+        "*delay = HZ / 5;" \
+        's|\*delay = HZ / 5;|\*delay = HZ / 10;|'
+
+    # si2168: blind settle 900ms -> 300ms (same as si2183)
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/si2168.c" \
+        "si2168: min_delay_ms 900 -> 300" \
+        "min_delay_ms = 900" \
+        's/min_delay_ms = 900/min_delay_ms = 300/'
+
+    # stv6120: redundant VCO-cal settle 10-12ms -> 2-3ms (cal-done already
+    # awaited in wait_for_call_done)
+    apply_python_patch \
+        "$SRC/drivers/media/tuners/stv6120.c" \
+        "stv6120: VCO settle 10ms -> 2ms" \
+        "usleep_range(10000,12000);" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+old = "usleep_range(10000,12000);"
+if old not in txt:
+    print("  anchor not found"); sys.exit(0)
+open(f, "w").write(txt.replace(old, "usleep_range(2000,3000);", 1))
+print("  OK: stv6120 VCO settle 2-3ms")'
+
+    # m88rs6060: internal lock wait 20ms x 150 (3s blind) -> 10ms x 300
+    apply_python_patch \
+        "$SRC/drivers/media/dvb-frontends/m88rs6060.c" \
+        "m88rs6060: lock wait 20ms/150 -> 10ms/300" \
+        "for (i = 0; i < 150; i++)" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+hdr = "for (i = 0; i < 150; i++) {"
+i = txt.find(hdr)
+if i < 0:
+    print("  anchor not found"); sys.exit(0)
+seg = txt[i:i+400]
+if "msleep(20);" not in seg:
+    print("  loop body anchor not found"); sys.exit(0)
+seg = seg.replace("i < 150", "i < 300", 1).replace("msleep(20);", "msleep(10);", 1)
+open(f, "w").write(txt[:i] + seg + txt[i+400:])
+print("  OK: m88rs6060 lock wait 10ms/300")'
+
+    # m88rs6060: tune poll HZ/2 (500ms!) -> HZ/10
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/m88rs6060.c" \
+        "m88rs6060: tune poll HZ/2 -> HZ/10" \
+        "*delay = HZ / 2;" \
+        's|\*delay = HZ / 2;|\*delay = HZ / 10;|'
+
+    # avl6882: tune poll HZ/5 -> HZ/10
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/avl6882.c" \
+        "avl6882: tune poll HZ/5 -> HZ/10" \
+        "*delay = HZ / 5;" \
+        's|\*delay = HZ / 5;|\*delay = HZ / 10;|'
+
+    # avl6882: firmware-cmd wait granularity 20ms -> 10ms per command
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/avl6882.c" \
+        "avl6882: DEMOD_WAIT_MS 20 -> 10" \
+        "define DEMOD_WAIT_MS" \
+        's|#define DEMOD_WAIT_MS\t\t(20)|#define DEMOD_WAIT_MS\t\t(10)|'
+
+    # stv091x: tune poll HZ (1s!) -> HZ/10
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/stv091x.c" \
+        "stv091x: tune poll HZ -> HZ/10" \
+        "*delay = HZ;" \
+        's|\*delay = HZ;|\*delay = HZ / 10;|'
+
     fi # TBS_PERF
 
     # -----------------------------------------------------------------------
