@@ -108,10 +108,6 @@ TBS_BRANCH=testing sudo bash install_tbsdtv-smart.sh
 - Arch Linux
 - openSUSE Tumbleweed
 
-## License
-
-MIT License — see repository for details.
-
 ## Disclaimer
 
 This is an **unofficial** installer. TBS does not maintain the `linux_media` tree for modern kernels. This script bridges that gap by applying community patches and building out-of-tree. Use at your own risk.

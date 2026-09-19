@@ -106,7 +106,7 @@ detect_distro() {
 }
 
 detect_kernel_sources() {
-    # KBUILD — directory used by make -C
+    # KBUILD — directory used by make -C (contains arch-specific Makefile + .config)
     local kbuild_candidates=(
         "/lib/modules/${KVER}/build"
         "/usr/src/kernels/${KVER}"
@@ -136,11 +136,27 @@ detect_kernel_sources() {
     info "  KBuild: $KBUILD"
 
     # Headers source for rsync into BUILD_DIR
+    # We need a tree with physical include/ files (not symlinks to outside).
+    # Priority: arch-specific headers (has generated headers) > common headers > KBUILD fallback
     local hdr_candidates=()
+
+    # Debian/Ubuntu arch-specific headers (contains generated/autoconf headers)
     [[ -d "/usr/src/linux-headers-${KVER}" ]] && hdr_candidates+=("/usr/src/linux-headers-${KVER}")
+
+    # Debian "common" split headers
     local common=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
     [[ -n "$common" && -d "$common" ]] && hdr_candidates+=("$common")
+
+    # Ubuntu "main" headers (named without -common, e.g. linux-headers-7.0.0-31)
+    # These are the common headers on Ubuntu. We look for ones matching our kernel version base.
+    local kver_base="${KVER%%-*}"
+    local ubuntu_hdr=$(find /usr/src -maxdepth 1 -name "linux-headers-${kver_base}" -type d | sort -V | tail -1)
+    [[ -n "$ubuntu_hdr" && -d "$ubuntu_hdr" && "$ubuntu_hdr" != "/usr/src/linux-headers-${KVER}" ]] && hdr_candidates+=("$ubuntu_hdr")
+
+    # Fedora/RHEL
     [[ -d "/usr/src/kernels/${KVER}" ]] && hdr_candidates+=("/usr/src/kernels/${KVER}")
+
+    # Arch / generic
     [[ -d "/usr/src/linux-${KVER}" ]] && hdr_candidates+=("/usr/src/linux-${KVER}")
 
     KHEADERS_COMMON=""
@@ -151,6 +167,11 @@ detect_kernel_sources() {
         fi
     done
 
+    # Fallback: if KBUILD itself has a full include/ tree (e.g. Fedora, Arch), use it
+    if [[ -z "$KHEADERS_COMMON" && -d "$KBUILD/include" ]]; then
+        KHEADERS_COMMON="$KBUILD"
+    fi
+
     if [[ -z "$KHEADERS_COMMON" ]]; then
         warn "  Could not find dedicated headers tree. Falling back to KBUILD."
         KHEADERS_COMMON="$KBUILD"
@@ -158,6 +179,25 @@ detect_kernel_sources() {
     info "  Headers source: $KHEADERS_COMMON"
 }
 
+# ===========================================================================
+# Optional cleanup of stale modules from previous runs
+# ===========================================================================
+check_stale_modules() {
+    local updates_dir="/lib/modules/${KVER}/updates"
+    if [[ -d "$updates_dir" && -n "$(ls -A "$updates_dir" 2>/dev/null)" ]]; then
+        warn "  Existing modules found in: $updates_dir"
+        warn "  Old modules may cause version mismatch errors."
+        read -rp "  Remove existing modules before install? [y/N]: " ANS
+        if [[ "${ANS,,}" == "y" ]]; then
+            rm -rf "${updates_dir:?}"/*
+            info "  Cleared: $updates_dir"
+        fi
+    fi
+}
+
+# ===========================================================================
+# TBS Hardware Detection (cosmetic only, does not affect build targets)
+# ===========================================================================
 # ===========================================================================
 # TBS Hardware Detection (cosmetic only, does not affect build targets)
 # ===========================================================================
@@ -696,6 +736,7 @@ info "Log: $LOG"
 pause
 
 step "Module installation"
+check_stale_modules
 echo -e "${CYAN}  Install modules for kernel ${KVER}?"
 echo -e "  Target: ${INSTALL_DIR}${NC}"
 read -rp "  [Y/n]: " ANSWER

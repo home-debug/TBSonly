@@ -18,6 +18,9 @@
 ### Fixes
 - Proper cleanup of USB Makefile backup (`usb/dvb-usb/Makefile.orig`)
 - Better error messages when kernel headers are missing (distro-specific install commands)
+- **Ubuntu headers detection**: now correctly finds `linux-headers-x.y.z` (without `-common` suffix) used by Ubuntu
+- **Arch-specific headers priority**: uses arch-specific headers tree first (contains generated/autoconf headers), falls back to common headers or KBUILD
+- **Stale modules cleanup**: optional prompt to remove old modules from `/lib/modules/*/updates/` before installation (prevents version mismatch errors)
 
 ---
 
