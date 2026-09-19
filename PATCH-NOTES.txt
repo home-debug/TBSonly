@@ -36,3 +36,36 @@ README (2026-09-20):
     i "Not yet supported (planned)" (skorygowane - USB/modulatory czesciowo
     juz wspierane na dev)
   - Dodana nota: tabele sa reczne, detekcja sprzetu dziala automatycznie
+
+Audyt USB (2026-09-19/20, noc):
+  - Wyjasnienie "czesc USB wspierana, czesc nie":
+    1) wspierane = zrodla tbs*.c w drzewie TBS + wpis w custom Makefile skryptu
+    2) zaplanowane = zrodla ISTNIEJA w drzewie (5230, 5530, 5922SE, 5927, 5931),
+       ale nie sa jeszcze wlaczone do builda (niezweryfikowane na 7.x)
+    3) BUG: skrypt odwolywal sie do tbs5920.o/tbs5922.o, ktorych NIE MA
+       w drzewie TBS -> kazdy build usb/dvb-usb konczyl sie bledem
+       "No rule to make target". Usuniete fikcyjne wpisy (fix, nie utrata
+       funkcjonalnosci - nigdy nie mogly sie zbudowac).
+  - Po fixie: 15 modulow USB, wszystkie ze zrodlami w drzewie.
+  - README: QBox2/2CI/22/S2 przeniesione do wspieranych, tabela planned
+    skorygowana.
+
+Audyt "bazujemy na tbsdtv/linux_media" (2026-09-20):
+  - Repo tbsdtv/linux_media ma TYLKO 3 branche: latest (2026-07, utrzymywany),
+    master (2025-03, stary, tasklety - nie zbuduje sie na 7.x), gse (DVB-GSE).
+  - Branch "testing" NIE ISTNIEJE -> mapowanie dev->testing i flaga --testing
+    konczyly sie bledem "Remote branch testing not found". BUG od v19.
+  - FIX: domyslnie wszedzie "latest"; przed clone skrypt waliduje branch
+    przez git ls-remote --heads, wypisuje dostepne branche i wypada na
+    "latest" (lub error przy wymuszonym --branch).
+
+Weryfikacja markerow patchy na latest TBS (2026-09-20):
+  - Sprawdzono aktualny branch latest tbsdtv/linux_media (commit 2026-07-24)
+    pod katem markerow z kernel-patches.sh:
+    dmxdev.c: from_timer, del_timer, dvb_vb2_init (3-arg x2) - WSZYSTKIE OBECNE
+    avl6882.h: IS_REACHABLE(CONFIG_DVB_AVL6882) - OBECNY
+    cxd2820r_core.c: "static void cxd2820r_gpio_set" + bare return - OBECNE
+    mxl58x.c: nie weryfikowano (duzy plik), patche idempotentne
+  - Wniosek: kernel-patches.sh v19-dev jest w pelni aktualny na latest.
+  - Bonus: ostatni commit TBS (si2183.c, APSK constants) to zgodnosc z UAPI
+    kernela 7.x - budowa si2183 powinna isc czystiej.

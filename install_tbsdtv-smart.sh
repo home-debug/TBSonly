@@ -3,9 +3,10 @@
 # WARNING: This is a development version. It may not work correctly.
 # Changes from v19:
 #   - Self-branch detection (main/dev) shown in header and log
-#   - Auto TBS branch mapping: dev -> testing, main/other -> latest
+#   - TBS branch validation against origin (falls back to 'latest'; 'testing' does not exist upstream)
 #   - Update check: proposes switching to newer 'dev' with warning
 #   - Fixed --branch argument parsing (works with a value, e.g. --branch main)
+#   - USB build fixed: removed nonexistent tbs5920/tbs5922 module targets
 set -euo pipefail
 
 DRY_RUN=0
@@ -35,8 +36,8 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --dry-run       Show what would be done without modifying anything"
-            echo "  --branch NAME   Use specific TBS repo branch (default: testing on 'dev', latest otherwise)"
-            echo "  --testing       Shortcut for --branch testing"
+            echo "  --branch NAME   Use specific TBS repo branch (default: latest)"
+            echo "  --testing       Shortcut for --branch testing (validated against origin)"
             echo "  -h, --help      Show this help message"
             echo ""
             echo "Environment:"
@@ -64,10 +65,9 @@ LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
 TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod" "usb/dvb-usb")
 
 # ===========================================================================
-# Detect which branch of THIS repo (TBSonly) we run from,
-# then pick the matching TBS source branch automatically:
-#   TBSonly dev  -> tbsdtv/linux_media testing
-#   TBSonly main -> tbsdtv/linux_media latest
+# Detect which branch of THIS repo (TBSonly) we run from (shown in header/log
+# and used by the update check). TBS branch selection defaults to 'latest'
+# for both main and dev - see the validation block below.
 # ===========================================================================
 SELF_BRANCH="unknown"
 SELF_COMMIT=""
@@ -77,11 +77,24 @@ if [[ -d "$SCRIPT_DIR/.git" ]]; then
     [[ "$SELF_BRANCH" == "HEAD" ]] && SELF_BRANCH="detached"
 fi
 
+# NOTE: tbsdtv/linux_media has only 'latest' (maintained), 'master' (stale) and
+# 'gse'. There is NO 'testing' branch - defaults go to 'latest' for both
+# main and dev; --branch/--testing are validated against origin below.
 if [[ -z "$TBS_BRANCH" ]]; then
-    case "$SELF_BRANCH" in
-        dev) TBS_BRANCH="testing" ;;
-        *)   TBS_BRANCH="latest" ;;
-    esac
+    TBS_BRANCH="latest"
+fi
+
+# Verify the requested TBS branch exists upstream before git clone/checkout
+if ! git ls-remote --exit-code --heads "$TBS_REPO" "$TBS_BRANCH" >/dev/null 2>&1; then
+    AVAIL=$(git ls-remote --heads "$TBS_REPO" 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||' | tr '\n' ' ')
+    warn "TBS branch '$TBS_BRANCH' not found in $TBS_REPO"
+    warn "Available branches: ${AVAIL:-<could not list - no network?>}"
+    if [[ "$TBS_BRANCH_FORCED" -eq 0 ]]; then
+        TBS_BRANCH="latest"
+        warn "Falling back to 'latest'."
+    else
+        error "Use --branch with one of the available branches listed above."
+    fi
 fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -724,8 +737,6 @@ dvb-usb-tbs5580-objs := tbs5580.o
 dvb-usb-tbs5590-objs := tbs5590.o
 dvb-usb-tbs5880-objs := tbs5880.o
 dvb-usb-tbs5881-objs := tbs5881.o
-dvb-usb-tbs5920-objs := tbs5920.o
-dvb-usb-tbs5922-objs := tbs5922.o
 dvb-usb-tbs5925-objs := tbs5925.o
 dvb-usb-tbs5930-objs := tbs5930.o
 dvb-usb-tbs5220-objs := tbs5220.o
@@ -741,8 +752,6 @@ obj-m += dvb-usb-tbs5580.o
 obj-m += dvb-usb-tbs5590.o
 obj-m += dvb-usb-tbs5880.o
 obj-m += dvb-usb-tbs5881.o
-obj-m += dvb-usb-tbs5920.o
-obj-m += dvb-usb-tbs5922.o
 obj-m += dvb-usb-tbs5925.o
 obj-m += dvb-usb-tbs5930.o
 obj-m += dvb-usb-tbs5220.o

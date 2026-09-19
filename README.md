@@ -97,14 +97,19 @@ Driver: `dvb-usb-*` family (`usb/dvb-usb` target)
 | Model | Type |
 |---|---|
 | TBS 5220 | DVB-T/T2/C |
+| TBS 5520 | DVB-S/S2/T/T2/C |
 | TBS 5520SE | DVB-S/S2 + DVB-T/T2/C |
 | TBS 5580 | DVB-S/S2 + DVB-T/T2/C |
 | TBS 5590 | DVB-S/S2 + DVB-T/T2/C |
 | TBS 5880, 5881 | DVB-T/T2/C + ISDB-T |
-| TBS 5920, 5922, 5925 | DVB-S/S2 |
+| TBS 5925 | DVB-S/S2 |
 | TBS 5930 | DVB-S/S2X |
 | TBS 5301 | DVB-S/S2 |
-| TBS QBox series | DVB-S/S2 |
+| TBS QBox | DVB-S/S2 |
+| TBS QBox2 | DVB-S/S2 |
+| TBS QBox2CI | DVB-S/S2 + CI |
+| TBS QBox22 | DVB-S/S2 |
+| TBS QBoxS2 | DVB-S/S2 |
 
 ### Compiled frontend and tuner modules
 
@@ -123,7 +128,8 @@ Shared modules used across the cards above:
 
 | Category | Cards | Status |
 |---|---|---|
-| USB | TBS 5230, 5520, 5530, 5922SE, 5927, 5931, QBox2, QBox2CI, QBox22, QBoxS2 | Planned |
+| USB | TBS 5230, 5530, 5922SE, 5927, 5931 | Planned — driver sources exist in the TBS tree, not enabled in the build yet |
+| USB | TBS 5920, 5922 | Not supported — no driver sources exist in the TBS tree at all |
 | PCIe Capture | TBS 6301T, 6302T, 690a | Planned |
 
 > **Note:** the card tables above are maintained manually. The script itself
@@ -160,14 +166,12 @@ sudo bash install_tbsdtv-smart.sh
 # Dry-run (shows what would be done without modifying anything)
 sudo bash install_tbsdtv-smart.sh --dry-run
 
-# Use TBS testing branch instead of latest
-sudo bash install_tbsdtv-smart.sh --testing
-
-# Use specific TBS branch
-sudo bash install_tbsdtv-smart.sh --branch main
+# Use specific TBS branch (validated against origin; note: tbsdtv/linux_media
+# has only 'latest', 'master' and 'gse' - there is no 'testing' branch)
+sudo bash install_tbsdtv-smart.sh --branch master
 
 # Or via environment variable
-TBS_BRANCH=testing sudo bash install_tbsdtv-smart.sh
+TBS_BRANCH=latest sudo bash install_tbsdtv-smart.sh
 ```
 
 If you already have the repository cloned, update it before building:
@@ -182,13 +186,14 @@ git pull origin dev
 ## How it works
 
 1. **Auto-detects your distribution** and locates kernel build sources (`/lib/modules/*/build`, `/usr/src/kernels/*`, etc.)
-2. **Detects its own branch** (`main`/`dev`) and picks the matching TBS source branch (`latest`/`testing`) automatically
-3. **Checks for updates** — if the `dev` branch on origin is newer than your current checkout, the script offers to switch (with a clear warning that `dev` may not work)
-4. **Parses TBS source tree** to detect which PCIe cards are physically present in your system (cosmetic — all modules are still built for compatibility)
-5. **Patches kernel API mismatches** via `kernel-patches.sh` (idempotent — safe to re-run)
-6. **Creates isolated build environment** with headers from both distro kernel and TBS repo
-7. **Compiles only TBS-specific modules** (dvb-core, frontends, tuners, PCIe bridges, USB tuners) — not the entire kernel tree
-8. **Installs to `/lib/modules/*/updates/tbs/`** and runs `depmod`
+2. **Detects its own branch** (`main`/`dev`) and shows it in the header; TBS sources default to `latest` (the only maintained branch)
+3. **Validates the TBS branch against origin** (`latest`/`master`/`gse` exist; `testing` does not) and falls back to `latest` instead of failing
+4. **Checks for updates** — if the `dev` branch on origin is newer than your current checkout, the script offers to switch (with a clear warning that `dev` may not work)
+5. **Parses TBS source tree** to detect which PCIe cards are physically present in your system (cosmetic — all modules are still built for compatibility)
+6. **Patches kernel API mismatches** via `kernel-patches.sh` (idempotent — safe to re-run)
+7. **Creates isolated build environment** with headers from both distro kernel and TBS repo
+8. **Compiles only TBS-specific modules** (dvb-core, frontends, tuners, PCIe bridges, USB tuners) — not the entire kernel tree
+9. **Installs to `/lib/modules/*/updates/tbs/`** and runs `depmod`
 
 ## Files
 

@@ -6,7 +6,7 @@
 
 ### New features
 - **Script branch detection** — the installer detects which branch of this repository it runs from (`main` / `dev` / detached / zip download) and shows it in the startup header and log
-- **Automatic TBS branch mapping** — running from `dev` defaults to the TBS `testing` branch, running from `main` (or unknown) defaults to `latest`; still overridable with `--branch`, `--testing` or `TBS_BRANCH=...`
+- **TBS branch validation** — before cloning, the script verifies the requested TBS branch exists upstream via `git ls-remote`; if it does not (e.g. the nonexistent `testing`), it lists available branches (`latest` / `master` / `gse`) and falls back to `latest` (or errors out when the branch was forced via `--branch` / `--testing` / `TBS_BRANCH=`)
 - **Update check with dev warning** — on startup the script fetches origin and compares your checkout against `origin/dev`; if `dev` is ahead, it offers to switch, with a clear warning that `dev` is a development version that may not work; on confirmation it checks out `dev`, pulls and re-runs itself
   - `--dry-run` only prints the switch commands
   - non-interactive shells (cron/pipe) get manual instructions instead of a prompt
@@ -17,6 +17,9 @@
 
 ### Fixes
 - `--branch NAME` argument parsing fixed (previously the branch name was consumed incorrectly and could trigger "Unknown argument")
+- **TBS `testing` branch does not exist** — `tbsdtv/linux_media` has only `latest` (maintained), `master` (stale, tasklet-based) and `gse`; the old `dev`→`testing` mapping and `--testing` flag failed at clone time. Default is now `latest` for both branches, with upstream validation
+- **USB build fixed**: removed `dvb-usb-tbs5920` / `dvb-usb-tbs5922` module targets — these driver sources do not exist in the TBS tree, which caused the entire `usb/dvb-usb` build to fail ("No rule to make target") on every run
+- README USB tables corrected: QBox2 / QBox2CI / QBox22 / QBoxS2 moved to supported (sources exist and are built); 5230 / 5530 / 5922SE / 5927 / 5931 listed as planned (sources exist, not enabled); 5920 / 5922 listed as unsupported (no sources in TBS tree)
 
 ---
 
