@@ -134,7 +134,7 @@ Shared modules used across the cards above:
 | Category | Cards | Status |
 |---|---|---|
 | USB | TBS 5920, 5922 | Not supported — no driver sources exist in the TBS tree at all |
-| PCIe Capture | TBS 6301T, 6302T, 690a | Planned |
+| PCIe Capture | TBS 6301T, 6302T, TBS690A, TBS6304X and other TBS HDMI/SDI/ASI capture cards | Planned — driver sources exist in the TBS tree (`pci/tbscapture` → `tbs_pcie-cap`, `pci/tbscapture2` → `tbs_pcie2-cap`, x86-only), but they are video-capture (V4L2) devices, not DVB tuners, and are not built by this installer yet |
 
 > **Note:** the card tables above are maintained manually. The script itself
 > detects your actual hardware automatically from the TBS source tree at

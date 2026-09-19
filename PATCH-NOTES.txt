@@ -79,3 +79,15 @@ Wlaczenie 5 tunerow USB (2026-09-20):
   - UWAGA: kompilacja zweryfikowana skladniowo (bash -n); realny build
     na kernelu 7.x do przetestowania na docelowym systemie.
   - README: przeniesione do wspieranych, tabela planned oczyszczona.
+
+Weryfikacja wpisu "PCIe Capture 6301T, 6302T, 690a" (2026-09-20):
+  - Pochodzenie: README main v18 (AI) - przeniesione bez weryfikacji.
+  - WERYFIKACJA: karty istnieja naprawde (TBS6301T/6302T HDMI encoding
+    PCIe capture - datasheet TBS; TBS690A 4x DVB-ASI - pciex.net).
+  - Sterowniki ISTNIEJA w drzewie TBS:
+    pci/tbscapture  -> tbs_pcie-cap.ko ("TBS PCIe HDMI/SDI capture")
+    pci/tbscapture2 -> tbs_pcie2-cap.ko ("TBS PCIex2 HDMI capture",
+                       x86-only, -msse/-msse2, masa kodu konwersji libyuv)
+  - "Planned" = instalator ich nie buduje (to V4L2, nie DVB; tbscapture2
+    tylko x86). Wpis w README skorygowany na zweryfikowany.
+  - TODO: tabela modulatorow (TBSMOD) tez do weryfikacji w zrodlach tbsmod.
