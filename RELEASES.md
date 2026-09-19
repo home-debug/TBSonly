@@ -7,6 +7,7 @@
 ### New features
 - **Script branch detection** — the installer detects which branch of this repository it runs from (`main` / `dev` / detached / zip download) and shows it in the startup header and log
 - **TBS branch validation** — before cloning, the script verifies the requested TBS branch exists upstream via `git ls-remote`; if it does not (e.g. the nonexistent `testing`), it lists available branches (`latest` / `master` / `gse`) and falls back to `latest` (or errors out when the branch was forced via `--branch` / `--testing` / `TBS_BRANCH=`)
+- **Five more USB tuners enabled** — `dvb-usb-tbs5230`, `-tbs5530`, `-tbs5922se`, `-tbs5927`, `-tbs5931` added to the build (driver sources exist in the TBS tree; previously listed as planned). USB target now builds 20 modules
 - **Update check with dev warning** — on startup the script fetches origin and compares your checkout against `origin/dev`; if `dev` is ahead, it offers to switch, with a clear warning that `dev` is a development version that may not work; on confirmation it checks out `dev`, pulls and re-runs itself
   - `--dry-run` only prints the switch commands
   - non-interactive shells (cron/pipe) get manual instructions instead of a prompt

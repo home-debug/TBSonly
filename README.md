@@ -97,13 +97,18 @@ Driver: `dvb-usb-*` family (`usb/dvb-usb` target)
 | Model | Type |
 |---|---|
 | TBS 5220 | DVB-T/T2/C |
+| TBS 5230 | DVB-T/T2/C |
 | TBS 5520 | DVB-S/S2/T/T2/C |
 | TBS 5520SE | DVB-S/S2 + DVB-T/T2/C |
+| TBS 5530 | DVB-S/S2/T/T2/C |
 | TBS 5580 | DVB-S/S2 + DVB-T/T2/C |
 | TBS 5590 | DVB-S/S2 + DVB-T/T2/C |
 | TBS 5880, 5881 | DVB-T/T2/C + ISDB-T |
+| TBS 5922SE | DVB-S/S2/S2X |
 | TBS 5925 | DVB-S/S2 |
+| TBS 5927 | DVB-S/S2 |
 | TBS 5930 | DVB-S/S2X |
+| TBS 5931 | DVB-S/S2/S2X |
 | TBS 5301 | DVB-S/S2 |
 | TBS QBox | DVB-S/S2 |
 | TBS QBox2 | DVB-S/S2 |
@@ -128,7 +133,6 @@ Shared modules used across the cards above:
 
 | Category | Cards | Status |
 |---|---|---|
-| USB | TBS 5230, 5530, 5922SE, 5927, 5931 | Planned — driver sources exist in the TBS tree, not enabled in the build yet |
 | USB | TBS 5920, 5922 | Not supported — no driver sources exist in the TBS tree at all |
 | PCIe Capture | TBS 6301T, 6302T, 690a | Planned |
 
