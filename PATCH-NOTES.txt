@@ -189,3 +189,11 @@ Full-tree performance audit v3 (2026-09-20, ~00:55):
   gx1503, mn88436/43x, s5h1432, tda18212, stb0899, lnbh29, isl6422.
   av201x bw bug report: see above - decide whether to fix
   ("bw = bw * 108 / 100;").
+
+README capture-section driver line fix (2026-09-20, ~01:05):
+  - Previous line claimed "tbsecp3.ko handles these boards too" - too
+    assertive. Verified: board IDs are in tbsecp3-cards.c (tbsecp3
+    matches the PCI device); capture video is in tbs_pcie-cap.ko /
+    tbs_pcie2-cap.ko. Exact wiring (who registers what) NOT verified -
+    tbsecp3-dvb.c exceeds fetch size limit. README now states only the
+    verified facts.

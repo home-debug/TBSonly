@@ -78,9 +78,13 @@ Driver: `saa716x_tbs-dvb.ko`
 
 ### PCIe — capture / encoder (NOT built by this installer)
 
-Driver: `tbsecp3.ko` handles these boards too, but they are video
-capture / encoder devices (V4L2 / ASI), not DVB tuners. Names verified
-against `tbsecp3-cards.c` in the TBS tree:
+The PCIe device IDs of these boards are defined in
+`tbsecp3-cards.c`, so the `tbsecp3.ko` bridge driver matches them; the
+video capture/encode itself is implemented in `tbs_pcie-cap.ko`
+(`pci/tbscapture`) and `tbs_pcie2-cap.ko` (`pci/tbscapture2`) — neither
+is built by this installer. They are video capture / encoder devices
+(V4L2 / ASI), not DVB tuners. Names verified against `tbsecp3-cards.c`
+in the TBS tree:
 
 | Model | Real type (per TBS tree) |
 |---|---|
