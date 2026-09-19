@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# install_tbsdtv-smart v19
+# install_tbsdtv-smart v19-dev
+# WARNING: This is a development version. It may not work correctly.
 # Changes from v18:
 #   - Root privilege check
 #   - Cross-distro kernel source auto-detection (Debian, Fedora, Arch, openSUSE)

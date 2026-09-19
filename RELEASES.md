@@ -1,6 +1,8 @@
 # Release Notes
 
-## v19 (2025-09-19)
+## v19-dev (2025-09-19) — DEVELOPMENT / UNSTABLE
+
+> ⚠️ **This is a development version.** It contains experimental features and may not work correctly on all systems. Use the `main` branch for stable releases.
 
 ### New features
 - **Root privilege check** — script exits early with clear message if not run as root

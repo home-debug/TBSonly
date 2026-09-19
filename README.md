@@ -1,5 +1,8 @@
 # TBSonly
 
+> **⚠️ DEVELOPMENT VERSION**  
+> This is the `dev` branch. It contains experimental features and may not work correctly. For stable releases, check the `main` branch or tagged releases.
+
 Out-of-tree driver installer for **TBS DVB tuners** on modern Linux kernels (7.0+).
 
 This project was created with the help of **Claude AI (Anthropic)**.  
@@ -99,6 +102,7 @@ TBS_BRANCH=testing sudo bash install_tbsdtv-smart.sh
 | `kernel-patches.sh` | API compatibility patches for new kernels |
 | `README.md` | This file |
 | `RELEASES.md` | Changelog |
+| `LICENSE` | MIT License |
 
 ## Tested on
 
@@ -111,3 +115,7 @@ TBS_BRANCH=testing sudo bash install_tbsdtv-smart.sh
 ## Disclaimer
 
 This is an **unofficial** installer. TBS does not maintain the `linux_media` tree for modern kernels. This script bridges that gap by applying community patches and building out-of-tree. Use at your own risk.
+
+## License
+
+This project is released under the **MIT License**. You are free to use, modify, distribute, and sublicense it, including for commercial purposes. See `LICENSE` for full text.
