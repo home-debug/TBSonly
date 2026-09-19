@@ -178,6 +178,138 @@ else:
         "static int CfgDemodAbortTune(" \
         's/static int CfgDemodAbortTune(/static int __maybe_unused CfgDemodAbortTune(/g'
 
+    # =========================================================================
+    # PERFORMANCE PATCHES — disabled by default.
+    # Enable with:  TBS_PERF=1 sudo bash install_tbsdtv-smart.sh
+    # These modify timing/sleeps only (no data-path or register changes),
+    # but they are NOT upstream-tested - A/B on your hardware before keeping.
+    # Revert: remove TBS_PERF=1 AND rm -rf /usr/src/tbs-drivers (sources are
+    # patched in place; a rebuild alone does not restore originals).
+    # =========================================================================
+    if [[ "${TBS_PERF:-0}" != "1" ]]; then
+        info "Performance patches disabled (set TBS_PERF=1 to enable)"
+    else
+    warn "TBS_PERF=1: applying experimental performance patches"
+
+    # -----------------------------------------------------------------------
+    # dvb-frontends/si2183.c — performance tuning (TBS-only driver)
+    #
+    # 1) si2183_get_tune_settings(): blind settle delay 900 ms -> 300 ms.
+    #    The Si2183 firmware reports lock quickly; 900 ms per zap is pure
+    #    user-visible latency. A/B test on target hardware; revert this
+    #    patch if lock instability appears.
+    # 2) si2183_tune(): status poll interval HZ/5 (200 ms) -> HZ/10 (100 ms)
+    #    while searching for lock. Faster lock detection; slightly more I2C
+    #    traffic (fine with 2-3 tuners).
+    # -----------------------------------------------------------------------
+    pi "si2183.c: performance patches..."
+
+    apply_sed_if_match \\
+        "$SRC/drivers/media/dvb-frontends/si2183.c" \\
+        "si2183: min_delay_ms 900 -> 300" \\
+        "min_delay_ms = 900" \\
+        's/min_delay_ms = 900/min_delay_ms = 300/'
+
+    apply_sed_if_match \\
+        "$SRC/drivers/media/dvb-frontends/si2183.c" \\
+        "si2183: lock poll HZ/5 -> HZ/10" \\
+        "*delay = HZ / 5;" \\
+        's/\*delay = HZ \/ 5;/\*delay = HZ \/ 10;/'
+
+    # -----------------------------------------------------------------------
+    # Performance patch set v2 — targeted at the user's cards:
+    #   gx1133  = demod in TBS 6902 (TBSECP3)
+    #   cx24117 = demod in Technotrend S2-4100 / TBS6922 (SAA716x)
+    # All patches reduce blind waits / poll granularity. Idempotent.
+    # -----------------------------------------------------------------------
+    pi "gx1133.c / cx24117.c: performance patches v2..."
+
+    # gx1133: ADC/core reset settle time in initfe 10ms -> 3ms (4x).
+    apply_python_patch \
+        "$SRC/drivers/media/dvb-frontends/gx1133.c" \
+        "gx1133: initfe reset settle 10ms -> 3ms" \
+        "static int gx1133_initfe" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+a = txt.find("static int gx1133_initfe")
+b = txt.find("static int gx1133_sleep")
+if a < 0 or b < 0 or b < a:
+    print("  anchors not found"); sys.exit(0)
+seg = txt[a:b]
+if "msleep(10);" not in seg:
+    print("  already applied"); sys.exit(0)
+open(f, "w").write(txt[:a] + seg.replace("msleep(10);", "msleep(3);") + txt[b:])
+print("  OK: initfe resets 10ms -> 3ms")'
+
+    # gx1133: tuner PLL settle after set_params 50ms -> 10ms (AV201x locks in ~1-2ms).
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/gx1133.c" \
+        "gx1133: tuner settle 50ms -> 10ms" \
+        "msleep(50);" \
+        's/msleep(50);/msleep(10);/'
+
+    # gx1133: lock poll 20ms x 15 -> 10ms x 30 (same 300ms worst case, finer detection).
+    apply_python_patch \
+        "$SRC/drivers/media/dvb-frontends/gx1133.c" \
+        "gx1133: lock poll 20ms/15 -> 10ms/30" \
+        "i<15; i++" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+old1 = "for (i = 0; i<15; i++) {"
+old2 = "msleep(20);\n\t}\n\treturn -EINVAL;"
+if old1 not in txt or old2 not in txt:
+    print("  anchors not found"); sys.exit(0)
+txt = txt.replace(old1, "for (i = 0; i<30; i++) {", 1)
+txt = txt.replace(old2, "msleep(10);\n\t}\n\treturn -EINVAL;", 1)
+open(f, "w").write(txt)
+print("  OK: lock poll 20ms/15 -> 10ms/30")'
+
+    # cx24117: firmware-command busy-wait granularity 20ms -> ~1ms.
+    # Every CMD_* pays one dead poll tick (~10-19ms); a zap issues 4-6 commands.
+    apply_python_patch \
+        "$SRC/drivers/media/dvb-frontends/cx24117.c" \
+        "cx24117: EXECUTE poll 20ms -> ~1ms" \
+        "CX24117_REG_EXECUTE" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+old = "while (cx24117_readreg(state, CX24117_REG_EXECUTE)) {\n\t\tmsleep(20);"
+new = "while (cx24117_readreg(state, CX24117_REG_EXECUTE)) {\n\t\tusleep_range(900, 1100);"
+if old not in txt:
+    print("  anchor not found"); sys.exit(0)
+open(f, "w").write(txt.replace(old, new, 1))
+print("  OK: EXECUTE poll 20ms -> ~1ms")'
+
+    # cx24117: lock wait loop 20ms x 50 -> 10ms x 100 (same 1s worst case for
+    # the DVB-S2 ROLLOFF_AUTO retry chain, finer lock detection).
+    apply_python_patch \
+        "$SRC/drivers/media/dvb-frontends/cx24117.c" \
+        "cx24117: lock wait 20ms/50 -> 10ms/100" \
+        "for (i = 0; i < 50; i++)" \
+        'import sys
+f = sys.argv[1]; txt = open(f).read()
+old1 = "for (i = 0; i < 50; i++) {"
+old2 = "\t\t\tmsleep(20);\n\t\t}"
+if old1 not in txt or old2 not in txt:
+    print("  anchors not found"); sys.exit(0)
+txt = txt.replace(old1, "for (i = 0; i < 100; i++) {", 1)
+txt = txt.replace(old2, "\t\t\tmsleep(10);\n\t\t}", 1)
+open(f, "w").write(txt)
+print("  OK: lock wait 20ms/50 -> 10ms/100")'
+
+    # gx1133 + cx24117: status poll interval while searching 200ms -> 100ms.
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/gx1133.c" \
+        "gx1133: tune poll HZ/5 -> HZ/10" \
+        "*delay = HZ / 5;" \
+        's|\*delay = HZ / 5;|\*delay = HZ / 10;|'
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/cx24117.c" \
+        "cx24117: tune poll HZ/5 -> HZ/10" \
+        "*delay = HZ / 5;" \
+        's|\*delay = HZ / 5;|\*delay = HZ / 10;|'
+
+    fi # TBS_PERF
+
     # -----------------------------------------------------------------------
     # Add new patches above this line.
     # If a patch is specific to a kernel version (e.g. error first appeared in 7.3):

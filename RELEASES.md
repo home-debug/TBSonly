@@ -7,6 +7,9 @@
 ### New features
 - **Script branch detection** — the installer detects which branch of this repository it runs from (`main` / `dev` / detached / zip download) and shows it in the startup header and log
 - **TBS branch validation** — before cloning, the script verifies the requested TBS branch exists upstream via `git ls-remote`; if it does not (e.g. the nonexistent `testing`), it lists available branches (`latest` / `master` / `gse`) and falls back to `latest` (or errors out when the branch was forced via `--branch` / `--testing` / `TBS_BRANCH=`)
+- **Performance patches gated behind `TBS_PERF=1`** — v1+v2 are OFF by default; a plain build uses vanilla TBS sources. Revert requires both removing the flag and `rm -rf /usr/src/tbs-drivers`
+- **Performance patch set v2 (gx1133 + cx24117)** — targeted at TBS 6902 / TBS6922-class cards: init/reset settle times reduced (10 ms->3 ms, 50 ms->10 ms), lock-poll granularity halved (same worst-case timeout), cx24117 firmware-command dead time cut from 20 ms to ~1 ms per command, tune status poll 200 ms->100 ms
+- **Performance patch set v1 (si2183)** — blind settle delay after tuning reduced 900 ms -> 300 ms (`si2183_get_tune_settings`), lock-status poll interval 200 ms -> 100 ms (`si2183_tune`). Faster channel zapping on Si2183-based cards; A/B test before/after recommended
 - **Five more USB tuners enabled** — `dvb-usb-tbs5230`, `-tbs5530`, `-tbs5922se`, `-tbs5927`, `-tbs5931` added to the build (driver sources exist in the TBS tree; previously listed as planned). USB target now builds 20 modules
 - **Update check with dev warning** — on startup the script fetches origin and compares your checkout against `origin/dev`; if `dev` is ahead, it offers to switch, with a clear warning that `dev` is a development version that may not work; on confirmation it checks out `dev`, pulls and re-runs itself
   - `--dry-run` only prints the switch commands

@@ -74,21 +74,24 @@ Driver: `saa716x_tbs-dvb.ko`
 | TBS 6991 | DVB-S/S2 — Dual + CI |
 | TBS 6991SE | DVB-S/S2 — Dual + CI |
 | TBS 7220 | DVB-T |
-| Technotrend TT4100 | DVB-S/S2 (TBS6922 clone) |
+| Technotrend TT-budget S2-4100 | DVB-S/S2 (identical to TBS6922) |
 
-### PCIe — modulators (TBSMOD)
+### PCIe — capture / encoder (NOT built by this installer)
 
-Driver: `tbsmod.ko` / `tbsdtv` modulator targets (`pci/tbsmod`)
+Driver: `tbsecp3.ko` handles these boards too, but they are video
+capture / encoder devices (V4L2 / ASI), not DVB tuners. Names verified
+against `tbsecp3-cards.c` in the TBS tree:
 
-| Model | Type |
+| Model | Real type (per TBS tree) |
 |---|---|
-| TBS 6301, 6301SE | DVB-S/S2 modulator |
-| TBS 6302SE/X/T/RV | DVB-S/S2 modulator |
-| TBS 6304/X/T/RV | DVB-S/S2 modulator |
-| TBS 6308/X | DVB-S/S2 modulator |
-| TBS 6312X | DVB-S/S2 modulator |
-| TBS 6322, 6324 | ISDB-T modulator |
-| TBS 6331 | DVB-C modulator |
+| TBS 6301 / 6301T (TBS6301SE) | HDMI capture |
+| TBS 6302SE / 6302T / 6302X / 6302RV | HDMI capture / 4K HDMI encoder |
+| TBS 6304 / 6304T / 6304X / 6304RV | HDMI capture / 4K HDMI encoder |
+| TBS 6308 / 6308X | HDMI capture / 4K@30FPS HDMI encoder |
+| TBS 6312X | 4K@30FPS HDMI encoder |
+| TBS 6322 / 6324 | 3G-SDI encoder |
+| TBS 6331 | ASI capture |
+| TBS 690a | ASI capture |
 
 ### USB
 
@@ -134,7 +137,7 @@ Shared modules used across the cards above:
 | Category | Cards | Status |
 |---|---|---|
 | USB | TBS 5920, 5922 | Not supported — no driver sources exist in the TBS tree at all |
-| PCIe Capture | TBS 6301T, 6302T, TBS690A, TBS6304X and other TBS HDMI/SDI/ASI capture cards | Planned — driver sources exist in the TBS tree (`pci/tbscapture` → `tbs_pcie-cap`, `pci/tbscapture2` → `tbs_pcie2-cap`, x86-only), but they are video-capture (V4L2) devices, not DVB tuners, and are not built by this installer yet |
+| PCIe Capture / Encoder | TBS 6301T, 6302T, 6304X, 6331, 690a and the other cards listed in the section above | Planned — board definitions exist in `tbsecp3-cards.c` and capture drivers in `pci/tbscapture` / `pci/tbscapture2` (x86-only), but these are video-capture (V4L2/ASI) devices, not DVB tuners, and are not built by this installer yet |
 
 > **Note:** the card tables above are maintained manually. The script itself
 > detects your actual hardware automatically from the TBS source tree at
@@ -176,7 +179,15 @@ sudo bash install_tbsdtv-smart.sh --branch master
 
 # Or via environment variable
 TBS_BRANCH=latest sudo bash install_tbsdtv-smart.sh
+
+# Experimental performance patches (timing/sleeps only, A/B test first!)
+TBS_PERF=1 sudo bash install_tbsdtv-smart.sh
 ```
+
+> **Note:** `TBS_PERF=1` applies experimental timing patches to the TBS
+> sources (faster channel zapping). They are disabled by default. To fully
+> revert, remove the flag **and** `rm -rf /usr/src/tbs-drivers` before
+> rebuilding — the patches modify the sources in place.
 
 If you already have the repository cloned, update it before building:
 

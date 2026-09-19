@@ -91,3 +91,79 @@ Weryfikacja wpisu "PCIe Capture 6301T, 6302T, 690a" (2026-09-20):
   - "Planned" = instalator ich nie buduje (to V4L2, nie DVB; tbscapture2
     tylko x86). Wpis w README skorygowany na zweryfikowany.
   - TODO: tabela modulatorow (TBSMOD) tez do weryfikacji w zrodlach tbsmod.
+
+Identyfikacja sprzetu uzytkownika (HTPC, ASUS PRIME B450M-A, AMD Raven):
+  - 03:00.0 1131:7160 sub 13c2:3010 = Technotrend TT-budget S2-4100 (klon TBS6922, SAA716x)
+  - 05:00.0 544d:6178 sub 6902:0002 = TBS6902 (dual DVB-S/S2, TBSECP3)
+  - Brak urzadzen USB.
+  - README: poprawiona nazwa "TT4100" -> "TT-budget S2-4100".
+  - Po jutrzejszym buildzie: "dmesg | grep frontend" da dokladne nazwy
+    zaladowanych frontendow -> na tej podstawie wybieramy plik do audytu
+    wydajnosciowego.
+
+Weryfikacja tabeli "modulatory" w tbsecp3-cards.c (2026-09-20, ~00:10):
+  - Ustalenie: sekcja "modulatory TBSMOD" w README byla BLEDNA.
+    Wszystkie karty 63xx w tbsecp3-cards.c to HDMI capture / 4K HDMI encoder
+    (TBS6301="6301 HDMI Capture", 6302/6304/6308 = capture/encoder,
+    6312X/6304X/6302X = "4K@30FPS HDMI PCIe Encoder"),
+    6322/6324 = "3G-SDI PCIe Encoder", 6331 i 690a = "ASI Capture".
+    ZADNA z nich nie jest modulatorem. Wpis "6331 DVB-C modulator"
+    w README to blad - to karta ASI capture.
+  - README poprawione: sekcja "PCIe - capture / encoder (NOT built)",
+    zrodla nazw: tbsecp3-cards.c (latest).
+  - TODO: jaki jest sens istnienia katalogu pci/tbsmod w drzewie TBS?
+    (Kconfig: "TBS PCIe mod cards") - do sprawdzenia, czy to faktycznie
+    sterownik modulatorow pod inne karty.
+  - TBS6902 potwierdzone w tbsecp3-cards.c (2 adaptery, DVB-S/S2).
+    Frontend chip -> w tbsecp3-dvb.c (attach) - do pobrania.
+
+Optymalizacja wydajnosciowa v1 - si2183.c (2026-09-20, ~00:20):
+  Audyt statyczny si2183.c z latest wykazal:
+  1) si2183_get_tune_settings: min_delay_ms = 900 -> CIEMNY wait po kazdym
+     zapie. Firmware Si2183 raportuje lock szybko -> 900ms to czysta
+     latencja. Patch: 300ms. NAJWIĘKSZY zysk (do ~0.6s na zap).
+  2) si2183_tune: *delay = HZ/5 (200ms) -> HZ/10 (100ms) - czestszy odczyt
+     statusu przy szukaniu locka (~100ms srednio szybciej wykrywanie).
+  3) [bez zmian] cmd_execute busy-polluje I2C bez sleepa - zostaje,
+     dodanie usleep dodaloby latencje do kazdej komendy.
+  4) [bez zmian] firmware download przy pierwszym locie - protokol sprzetowy.
+  Oba patche w kernel-patches.sh (idempotentne, markery unikalne).
+  DO PRZETESTOWANIA A/B na sprzecie: czas zapu przed/po; przy niestabilnym
+  locku revert patcha #1.
+  UWAGA: potwierdzic jaki frontend ma realnie TBS6902:
+    grep -n -A14 "TBS6902" /usr/src/tbs-drivers/drivers/media/pci/tbsecp3/tbsecp3-dvb.c
+  (jesli to nie si2183, patche v1 nie dotkna tej karty - wtedy audyt
+  wlasciwego frontenda, np. stv091x/m88rs6060).
+
+Audyt wydajnosciowy v2 - gx1133.c + cx24117.c (2026-09-20, ~00:30):
+  (obie karty zweryfikowane przez lsmod uzytkownika: gx1133=TBS6902,
+   cx24117=TT S2-4100/TBS6922, oba z tunerem av201x, LNB tas2101)
+  gx1133.c (TBS6902):
+   - initfe: 4x reset msleep(10) -> msleep(3)      [jednorazowo przy open]
+   - set_frontend: tuner PLL settle msleep(50) -> 10 (AV201x lock ~1-2ms)
+   - lock poll: 20ms x 15 -> 10ms x 30 (ten sam worst-case 300ms)
+   - tune poll *delay HZ/5 -> HZ/10
+  cx24117.c (TBS6922):
+   - cmd_execute_nolock: EXECUTE busy-wait msleep(20) -> usleep_range(900,1100)
+     KAZDA komenda FW placila ~10-19ms martwego ticku; zap = 4-6 komend
+   - set_frontend lock wait: 20ms x 50 -> 10ms x 100 (ten sam bound 1s,
+     wazne przy DVB-S2 ROLLOFF_AUTO = do 3 prob, worst-case byl 3x1s)
+   - tune poll *delay HZ/5 -> HZ/10
+  NIE ruszono (spec/ryzyko): msleep(100) w set_voltage (DISEqC spec),
+  diseqc send/burst timings, root_2_gold (rzadko wywolywane), fw download.
+  Oczekiwany zysk realny: ~150-350ms na zap (zaleznie od sciezki),
+  wiekszosc z cx24117 EXECUTE poll + gx1133 PLL settle + poll granularity.
+  Wszystko A/B testowalne; revert = usuniecie wpisu z kernel-patches.sh.
+
+Bezpieczenstwo - gate TBS_PERF=1 (2026-09-20, ~00:35):
+  - User pytal "czy jestem pewien ze to nie zaszkodzi" - odpowiedz:
+    nie w 100%; najwyzsze ryzyko = gx1133 tuner settle 50->10ms
+    (fizyka PLL na slabych transponderach), reszta niskie/bardzo niskie.
+  - ZADNE patche nie ruszaja sciezki danych ani rejestrow - tylko timing.
+  - DECYZJA: wszystkie patche wydajnosciowe (v1 si2183 + v2 gx1133/cx24117)
+    przeniesione za gate:  TBS_PERF=1 sudo bash install_tbsdtv-smart.sh
+    Domyslnie OFF -> zwykly build = czyste zrodla TBS.
+  - UWAGA techniczna: revert wymaga flagi OFF + rm -rf /usr/src/tbs-drivers
+    (patche modyfikuja zrodla na dysku, sam rebuild nie przywraca oryginalu).
+  - Plan A/B: build 1 bez TBS_PERF (baseline sanity), build 2 z TBS_PERF=1,
+    pomiar zapu przed/po, decyzja czy zostaje.
