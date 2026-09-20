@@ -31,7 +31,7 @@ INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
 LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
 
 # tuners must be compiled before frontends/saa/tbs so Module.symvers is available
-TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod")
+TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod" "usb/dvb-usb")
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG"; }
@@ -86,6 +86,7 @@ cleanup() {
     local mf_saa="$SRC/drivers/media/pci/saa716x/Makefile"
     local mf_tbs="$SRC/drivers/media/pci/tbsecp3/Makefile"
     local mf_tuners="$SRC/drivers/media/tuners/Makefile"
+    local mf_usb="$SRC/drivers/media/usb/dvb-usb/Makefile"
     # Kernel headers: always restore (outside TBS tree)
     [[ -f "${h1}.orig" ]]        && mv "${h1}.orig"        "$h1"        && info "  Restored: dvb_frontend.h"
     [[ -f "${h2}.orig" ]]        && mv "${h2}.orig"        "$h2"        && info "  Restored: frontend.h"
@@ -95,6 +96,7 @@ cleanup() {
     [[ -f "${mf_saa}.orig" ]]    && rm "${mf_saa}.orig"    && info "  Removed backup: saa716x/Makefile.orig"
     [[ -f "${mf_tbs}.orig" ]]    && rm "${mf_tbs}.orig"    && info "  Removed backup: tbsecp3/Makefile.orig"
     [[ -f "${mf_tuners}.orig" ]] && rm "${mf_tuners}.orig" && info "  Removed backup: tuners/Makefile.orig"
+    [[ -f "${mf_usb}.orig" ]]    && rm "${mf_usb}.orig"    && info "  Removed backup: usb/dvb-usb/Makefile.orig"
 }
 trap cleanup EXIT
 
@@ -470,6 +472,55 @@ obj-m += saa716x_core.o
 obj-m += saa716x_tbs-dvb.o
 MAKEFILE
 info "saa716x Makefile ready."
+
+step "Creating minimal Makefile for usb/dvb-usb"
+cp "$SRC/drivers/media/usb/dvb-usb/Makefile" "${SRC}/drivers/media/usb/dvb-usb/Makefile.orig" 2>/dev/null || true
+cat > "$SRC/drivers/media/usb/dvb-usb/Makefile" << 'MAKEFILE'
+ccflags-y += -Idrivers/media/dvb-core
+ccflags-y += -Idrivers/media/dvb-frontends
+ccflags-y += -Idrivers/media/tuners
+dvb-usb-tbs5220-objs := tbs5220.o
+dvb-usb-tbs5230-objs := tbs5230.o
+dvb-usb-tbs5520-objs := tbs5520.o
+dvb-usb-tbs5520se-objs := tbs5520se.o
+dvb-usb-tbs5530-objs := tbs5530.o
+dvb-usb-tbs5580-objs := tbs5580.o
+dvb-usb-tbs5590-objs := tbs5590.o
+dvb-usb-tbs5880-objs := tbs5880.o
+dvb-usb-tbs5881-objs := tbs5881.o
+dvb-usb-tbs5922se-objs := tbs5922se.o
+dvb-usb-tbs5925-objs := tbs5925.o
+dvb-usb-tbs5927-objs := tbs5927.o
+dvb-usb-tbs5930-objs := tbs5930.o
+dvb-usb-tbs5931-objs := tbs5931.o
+dvb-usb-tbs5301-objs := tbs5301.o
+dvb-usb-tbsqbox-objs := tbs-qbox.o
+dvb-usb-tbsqbox2-objs := tbs-qbox2.o
+dvb-usb-tbsqbox2ci-objs := tbs-qbox2ci.o
+dvb-usb-tbsqbox22-objs := tbs-qbox22.o
+dvb-usb-tbsqboxs2-objs := tbs-qboxs2.o
+obj-m += dvb-usb-tbs5220.o
+obj-m += dvb-usb-tbs5230.o
+obj-m += dvb-usb-tbs5520.o
+obj-m += dvb-usb-tbs5520se.o
+obj-m += dvb-usb-tbs5530.o
+obj-m += dvb-usb-tbs5580.o
+obj-m += dvb-usb-tbs5590.o
+obj-m += dvb-usb-tbs5880.o
+obj-m += dvb-usb-tbs5881.o
+obj-m += dvb-usb-tbs5922se.o
+obj-m += dvb-usb-tbs5925.o
+obj-m += dvb-usb-tbs5927.o
+obj-m += dvb-usb-tbs5930.o
+obj-m += dvb-usb-tbs5931.o
+obj-m += dvb-usb-tbs5301.o
+obj-m += dvb-usb-tbsqbox.o
+obj-m += dvb-usb-tbsqbox2.o
+obj-m += dvb-usb-tbsqbox2ci.o
+obj-m += dvb-usb-tbsqbox22.o
+obj-m += dvb-usb-tbsqboxs2.o
+MAKEFILE
+info "usb/dvb-usb Makefile ready."
 
 step "Creating minimal Makefile for pci/tbsecp3"
 cp "$MF_TBS" "${MF_TBS}.orig"

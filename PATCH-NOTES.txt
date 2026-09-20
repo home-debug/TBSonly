@@ -9,3 +9,11 @@ Contents:
 This is a minimal-dev package: main build semantics + card detection.
 No USB targets, no branch detection, no performance patches, no extra
 include paths, no KBUILD_CPPFLAGS, no Module.symvers seeding.
+
+USB support added (2026-09-20, minimal diff to working main+detect):
+  - TARGET_DIRS += "usb/dvb-usb" (7 -> 8 targets)
+  - Custom Makefile for usb/dvb-usb with all 20 TBS USB modules; object
+    names verified against TBS tree (tbs-qbox.c etc.)
+  - cleanup() removes the usb Makefile backup
+  - Build core untouched: main EXTRA_CFLAGS, main H1/H2, main
+    Module.symvers chaining, no KBUILD_CPPFLAGS, no SRC include paths.
