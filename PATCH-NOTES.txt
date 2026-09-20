@@ -297,3 +297,17 @@ ROOT CAUSE FOUND - detection SyntaxError under C locale (2026-09-21):
     ASCII-only and locale-immune.
   - Verified: full run under LC_ALL=C against a fake tree -> finds
     TBS6902, rc=0.
+
+modpost undefined-symbol hardening (2026-09-20, clean-tree build):
+  - User clean build: modpost "cx24117_get_i2c_adapter" / "tas2101_get_i2c_adapter"
+    undefined in saa716x_tbs-dvb.ko. These are exported by the cx24117/tas2101
+    frontend modules that saa716x_tbs-dvb links against.
+  - Mechanism before: COMBINED_SYMVERS accumulated only each target's own
+    Module.symvers (appended, unsorted) - could race/overwrite under -j and
+    never contained the kernel core's exported symbols.
+  - FIX: (1) seed combined symvers from $KBUILD/Module.symvers before the
+    loop; (2) sort -u after each append; (3) copy the accumulated symvers
+    into each module dir (M=) before its make run so modpost always sees
+    the full cross-module symbol table.
+  - Warnings in the user log (-Wmissing-prototypes, -Wvla-larger-than)
+    are cosmetic TBS-code issues, not build blockers.
