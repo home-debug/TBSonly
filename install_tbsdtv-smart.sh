@@ -26,6 +26,11 @@ KMAJ=$(echo "$KVER" | cut -d. -f1)
 KMIN=$(echo "$KVER" | cut -d. -f2)
 KBUILD="/lib/modules/${KVER}/build"
 KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
+# Ubuntu variant: linux-headers-x.y.z-a (no -generic suffix)
+if [[ -z "$KHEADERS_COMMON" || ! -d "$KHEADERS_COMMON" ]]; then
+    KVER_BASE="${KVER%%-*}"
+    KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-${KVER_BASE}" -type d | sort -V | tail -1)
+fi
 BUILD_DIR="$SCRIPT_DIR/tbs-build-tmp"
 INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
 LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
@@ -262,9 +267,13 @@ def _main_impl():
         print("WARN|No TBS cards detected via lspci.")
         return
 
+    print("INFO|============================================")
+    print("INFO|  DETECTED TBS TUNERS: %d" % len(found))
+    print("INFO|============================================")
+
     for c in found:
         print("INFO|Found %s  [PCI %s, subdev %s, rev %s]" % (c['name'], c['slot'], c['sub'], c['rev']))
-        print("INFO|  -> requires %s driver" % c['family'])
+        print("INFO|  *** TUNER: %s ***" % c['family'])
 
     print("INFO|Total TBS cards detected: %d" % len(found))
 
@@ -358,6 +367,8 @@ apply_kernel_api_patches
 pause
 
 detect_tbs_cards
+
+pause
 
 step "Creating isolated build directory"
 rm -rf "$BUILD_DIR"
@@ -632,6 +643,18 @@ info "Log: $LOG"
 pause
 
 step "Module installation"
+# Ubuntu user report: stale modules in updates/ cause version mismatch errors
+UPDATES_DIR="/lib/modules/${KVER}/updates"
+if [[ -d "$UPDATES_DIR" && -n "$(ls -A "$UPDATES_DIR" 2>/dev/null)" ]]; then
+    warn "  Existing modules found in: $UPDATES_DIR"
+    warn "  Old modules may cause version mismatch errors (Ubuntu report)."
+    read -rp "  Remove existing modules before install? [y/N]: " ANS
+    if [[ "${ANS,,}" == "y" ]]; then
+        rm -rf "${UPDATES_DIR:?}"/*
+        info "  Cleared: $UPDATES_DIR"
+    fi
+fi
+
 echo -e "${CYAN}  Install modules for kernel ${KVER}?"
 echo -e "  Target: ${INSTALL_DIR}${NC}"
 read -rp "  [Y/n]: " ANSWER

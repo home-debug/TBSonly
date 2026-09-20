@@ -17,3 +17,11 @@ USB support added (2026-09-20, minimal diff to working main+detect):
   - cleanup() removes the usb Makefile backup
   - Build core untouched: main EXTRA_CFLAGS, main H1/H2, main
     Module.symvers chaining, no KBUILD_CPPFLAGS, no SRC include paths.
+
+Ubuntu user feedback integrated (2026-09-20):
+  - TBS 6218 user on Ubuntu 26.04 (kernel 7.0.0): headers are
+    linux-headers-x.y.z-a (no -generic), not matched by the -common pattern.
+    -> Added fallback: if -common missing, look for linux-headers-${KVER%%-*}*
+  - Same user hit "mismatched version errors" until clearing
+    /lib/modules/7.0.0-31-generic/updates/ of old modules.
+    -> Added optional stale-modules cleanup prompt before install.
