@@ -311,3 +311,16 @@ modpost undefined-symbol hardening (2026-09-20, clean-tree build):
     the full cross-module symbol table.
   - Warnings in the user log (-Wmissing-prototypes, -Wvla-larger-than)
     are cosmetic TBS-code issues, not build blockers.
+
+REVERT: Module.symvers seeding was wrong (2026-09-20):
+  - After my "hardening", user hit: modpost vmlinux "srso_alias_untrain_ret"
+    etc "exported twice. Previous export was in vmlinux".
+  - Cause: seeding $KBUILD/Module.symvers into the out-of-tree combined
+    symvers makes modpost see vmlinux symbols as duplicate exports. Kbuild
+    already links against the kernel's own symbol table natively; external
+    seeding of vmlinux symbols is incorrect for M= builds.
+  - REVERTED to exact v19 semantics (combined accumulates per-target
+    Module.symvers only). v19 demonstrably built the user's modules; the
+    earlier "undefined cx24117_get_i2c_adapter" report was not reproduced
+    on clean tree after this revert path, and dvb-frontends precedes
+    saa716x in TARGET_DIRS, which is the load-bearing ordering.

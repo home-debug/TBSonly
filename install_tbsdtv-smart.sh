@@ -840,9 +840,6 @@ ERRORS=(); SUCCESS=()
 # Fixes "undefined symbol" at modpost for modules depending on dvb-core / frontends.
 COMBINED_SYMVERS="$BUILD_DIR/Module.symvers"
 : > "$COMBINED_SYMVERS"
-# Seed with the kernel's exported symbols so out-of-tree modules resolving
-# core kernel exports (e.g. i2c adapters) never fail at modpost.
-[[ -f "$KBUILD/Module.symvers" ]] && cat "$KBUILD/Module.symvers" >> "$COMBINED_SYMVERS"
 
 for subdir in "${TARGET_DIRS[@]}"; do
     target="$SRC/drivers/media/$subdir"
@@ -850,21 +847,12 @@ for subdir in "${TARGET_DIRS[@]}"; do
     [[ -f "$target/Makefile" ]] || { warn "No Makefile in: $subdir"; continue; }
     info "Compiling: $subdir"
     MODULE_LOG=$(mktemp)
-    [[ -f "$KBUILD/Module.symvers" && ! -e "$target/Module.symvers" ]] && \
-        cp "$COMBINED_SYMVERS" "$target/Module.symvers" 2>/dev/null || true
     if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" \
             KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" -j$(nproc) modules 2>&1 \
             | tee "$MODULE_LOG" | tee -a "$LOG"; then
         info "  OK: $subdir"; SUCCESS+=("$subdir")
         [[ -f "$target/Module.symvers" ]] && \
             cat "$target/Module.symvers" >> "$COMBINED_SYMVERS"
-        [[ -f "$target/Module.symvers" ]] && \
-            sort -u "$COMBINED_SYMVERS" -o "$COMBINED_SYMVERS"
-        [[ -f "$KBUILD/Module.symvers" ]] && \
-            cat "$KBUILD/Module.symvers" >> "$COMBINED_SYMVERS" && \
-            sort -u "$COMBINED_SYMVERS" -o "$COMBINED_SYMVERS"
-        [[ -f "$target/modules.order" ]] && \
-            cat "$target/modules.order" >> "$BUILD_DIR/modules.order" 2>/dev/null || true
     else
         warn "  FAILED: $subdir"; ERRORS+=("$subdir")
         echo -e "${RED}  --- Errors in $subdir ---${NC}" | tee -a "$LOG"
