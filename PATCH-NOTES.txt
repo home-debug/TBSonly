@@ -214,3 +214,23 @@ dvb-pll patch investigation (2026-09-20, after user build log):
     corrected path + verified replacement (ida_alloc_max semantics:
     ida_simple_get(ida, 0, DVB_PLL_MAX, gfp) -> ida_alloc_max(ida,
     DVB_PLL_MAX - 1, gfp); ida_simple_remove -> ida_free).
+
+CRITICAL FIX - broken line continuations (2026-09-20, after user crash log):
+  - User log: "test: linia 148: $2: nieustawiona zmienna" right after the
+    dmxdev patches, before avl6882. Line 148 = apply_sed_if_match body
+    (local file="$1" desc="$2" ...) -> called with 1 argument.
+  - ROOT CAUSE: all script-added patch blocks (v1 si2183, v2 gx1133/cx24117,
+    v3 full-tree, dvb-pll restore) were written with DOUBLE backslash line
+    continuations (\\ instead of \) - bash treated the first argument as
+    the whole command. bash -n passes this (it is syntactically valid), which
+    is why earlier syntax checks did not catch it. The original v19 patches
+    (transcribed with a raw string) were always correct - consistent with
+    the user log showing dmxdev patches applying fine and the crash landing
+    exactly on the first script-added patch (dvb-pll, which sits before
+    avl6882 and is NOT behind the TBS_PERF gate).
+  - FIX: replaced line-ending "\\\n" with "\\n" (16 lines). Verified by
+    a stub harness (bash): sources kernel-patches.sh, shadows apply_* with
+    argument-count assertions, runs apply_kernel_api_patches with
+    TBS_PERF=1 and without -> "ALL CALLS OK" on both paths.
+  - LESSON: bash -n does NOT validate continuation semantics; the stub
+    harness is now the required pre-release check for kernel-patches.sh.

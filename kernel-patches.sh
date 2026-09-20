@@ -109,16 +109,16 @@ else:
     # this patch is defensive - it keeps the whole tree buildable if the
     # module is ever added. File lives in dvb-frontends/, not dvb-core/.
     # -----------------------------------------------------------------------
-    apply_sed_if_match \\
-        "$SRC/drivers/media/dvb-frontends/dvb-pll.c" \\
-        "dvb-pll: ida_simple_get/remove -> ida_alloc_max/ida_free" \\
-        "ida_simple_get(&pll_ida" \\
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/dvb-pll.c" \
+        "dvb-pll: ida_simple_get/remove -> ida_alloc_max/ida_free" \
+        "ida_simple_get(&pll_ida" \
         's/ida_simple_get(&pll_ida, 0, DVB_PLL_MAX, GFP_KERNEL)/ida_alloc_max(&pll_ida, DVB_PLL_MAX - 1, GFP_KERNEL)/g'
 
-    apply_sed_if_match \\
-        "$SRC/drivers/media/dvb-frontends/dvb-pll.c" \\
-        "dvb-pll: ida_simple_remove -> ida_free" \\
-        "ida_simple_remove(&pll_ida" \\
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/dvb-pll.c" \
+        "dvb-pll: ida_simple_remove -> ida_free" \
+        "ida_simple_remove(&pll_ida" \
         's/ida_simple_remove(&pll_ida, nr)/ida_free(&pll_ida, nr)/g'
 
     # -----------------------------------------------------------------------
@@ -225,16 +225,16 @@ else:
     # -----------------------------------------------------------------------
     pi "si2183.c: performance patches..."
 
-    apply_sed_if_match \\
-        "$SRC/drivers/media/dvb-frontends/si2183.c" \\
-        "si2183: min_delay_ms 900 -> 300" \\
-        "min_delay_ms = 900" \\
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/si2183.c" \
+        "si2183: min_delay_ms 900 -> 300" \
+        "min_delay_ms = 900" \
         's/min_delay_ms = 900/min_delay_ms = 300/'
 
-    apply_sed_if_match \\
-        "$SRC/drivers/media/dvb-frontends/si2183.c" \\
-        "si2183: lock poll HZ/5 -> HZ/10" \\
-        "*delay = HZ / 5;" \\
+    apply_sed_if_match \
+        "$SRC/drivers/media/dvb-frontends/si2183.c" \
+        "si2183: lock poll HZ/5 -> HZ/10" \
+        "*delay = HZ / 5;" \
         's/\*delay = HZ \/ 5;/\*delay = HZ \/ 10;/'
 
     # -----------------------------------------------------------------------
