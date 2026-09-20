@@ -358,3 +358,12 @@ Include path fix for clean builds (2026-09-20):
   - This is what allowed from-scratch builds to finally resolve the TBS
     frontend.h extensions (modcode, set_property, read_temp, ecp3/eeprom
     ioctls) without relying on stale objects.
+
+Header-patch step hardened (2026-09-20, after user log):
+  - Log: "cp: '/usr/src/tbs-drivers/include/media/dvb_frontend.h' and
+    '.../dvb_frontend.h' are the same file" -> step aborted under set -e.
+  - Cause: previous fix pointed H1/H2 at $SRC include paths, so the later
+    "cp $H1 ${H1}.orig && cp $SRC/... $H1" became a self-copy.
+  - FIX: guard the copy - if H1/H2 already equal the TBS path, skip; if the
+    target exists, back it up and overwrite with TBS; if the target is
+    missing, fall back to using the TBS header directly.

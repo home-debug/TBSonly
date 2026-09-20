@@ -637,10 +637,24 @@ fi
 info "Build directory ready."
 
 step "Temporarily patching kernel headers"
-cp "$H1" "${H1}.orig" && cp "$SRC/include/media/dvb_frontend.h" "$H1"
-info "  Patched: dvb_frontend.h"
-cp "$H2" "${H2}.orig" && cp "$SRC/include/uapi/linux/dvb/frontend.h" "$H2"
-info "  Patched: frontend.h (uapi)"
+if [[ "$H1" == "$SRC/include/media/dvb_frontend.h" ]]; then
+    info "  dvb_frontend.h: already sourced from the TBS tree - no patch needed"
+elif [[ -e "$H1" ]]; then
+    cp "$H1" "${H1}.orig" && cp "$SRC/include/media/dvb_frontend.h" "$H1"
+    info "  Patched: dvb_frontend.h"
+else
+    H1="$SRC/include/media/dvb_frontend.h"
+    info "  dvb_frontend.h: target missing, using TBS header directly"
+fi
+if [[ "$H2" == "$SRC/include/uapi/linux/dvb/frontend.h" ]]; then
+    info "  frontend.h (uapi): already sourced from the TBS tree - no patch needed"
+elif [[ -e "$H2" ]]; then
+    cp "$H2" "${H2}.orig" && cp "$SRC/include/uapi/linux/dvb/frontend.h" "$H2"
+    info "  Patched: frontend.h (uapi)"
+else
+    H2="$SRC/include/uapi/linux/dvb/frontend.h"
+    info "  frontend.h (uapi): target missing, using TBS header directly"
+fi
 
 step "Detecting missing CONFIG_DVB_* defines"
 KERNEL_CONFIG="/boot/config-${KVER}"
