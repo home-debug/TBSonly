@@ -380,3 +380,16 @@ dvb-core removed from TARGET_DIRS (2026-09-20, clean-build failure):
   - FIX: drop "dvb-core" from TARGET_DIRS. The TBS frontends link against
     the existing dvb-core module (via Module.symvers chaining), they do
     not need to rebuild it.
+
+-I${SRC}/include removed (2026-09-20, string.h failure):
+  - User log: dvb-frontends failed with "string.h: No such file" from
+    /usr/src/linux-headers-7.1.13+deb14-common/include/uapi/linux/string.h.
+  - Cause: I had added -I${SRC}/include to EXTRA_CFLAGS and KBUILD_CPPFLAGS.
+    The TBS tree contains include/linux/find.h and other headers that shadow
+    the distro -common headers. In particular, TBS include/uapi/linux/string.h
+    includes <string.h> (libc), which cannot be resolved when the compiler
+    finds the TBS header instead of the distro one.
+  - FIX: drop -I${SRC}/include, keep only -I${SRC}/include/uapi (needed so
+    dvb_frontend.c sees the TBS-extended frontend.h with modcode etc).
+  - This restores the main/v18 include semantics while still fixing the
+    missing TBS extensions via the uapi include path.
