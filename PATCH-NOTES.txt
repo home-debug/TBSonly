@@ -367,3 +367,16 @@ Header-patch step hardened (2026-09-20, after user log):
   - FIX: guard the copy - if H1/H2 already equal the TBS path, skip; if the
     target exists, back it up and overwrite with TBS; if the target is
     missing, fall back to using the TBS header directly.
+
+dvb-core removed from TARGET_DIRS (2026-09-20, clean-build failure):
+  - User log: dvb-core failed with "string.h: No such file" and
+    "storage class specified for parameter" errors from arch/x86 headers.
+  - Cause: dvb-core is a core kernel subsystem, already present in the
+    running kernel as dvb-core.ko. Rebuilding it from the TBS tree on a
+    clean system requires full kernel sources (not just headers) and
+    pulls in arch-specific asm headers that fail without them.
+  - Previous builds only passed because stale .o files from earlier runs
+    let make skip the actual compilation.
+  - FIX: drop "dvb-core" from TARGET_DIRS. The TBS frontends link against
+    the existing dvb-core module (via Module.symvers chaining), they do
+    not need to rebuild it.
