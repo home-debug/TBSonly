@@ -1,101 +1,37 @@
 #!/usr/bin/env bash
-# install_tbsdtv-smart v20-dev
-# WARNING: This is a development version. It may not work correctly.
-# Changes from v19:
-#   - Self-branch detection (main/dev) shown in header and log
-#   - TBS branch validation against origin (falls back to 'latest'; 'testing' does not exist upstream)
-#   - Update check: proposes switching to newer 'dev' with warning
-#   - Fixed --branch argument parsing (works with a value, e.g. --branch main)
-#   - USB build fixed: removed nonexistent tbs5920/tbs5922 module targets
+# install_tbsdtv-smart v18
+# Changes from v17/v19:
+#   - All messages translated to English
+#   - Git output: verbose progress (--progress flag)
+#   - Pause after each major step (press Enter to continue)
+#   - Removed fallback MISSING_DEFINES hardcoded list
+#   - Minimum kernel: 7.0+
 set -euo pipefail
 
 DRY_RUN=0
-TBS_BRANCH="${TBS_BRANCH:-}"   # resolved after script-branch detection
-TBS_BRANCH_FORCED=0
-ORIG_ARGS=("$@")
-
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --dry-run)
-            DRY_RUN=1
-            shift
-            ;;
-        --branch)
-            [[ $# -ge 2 ]] || { echo "ERROR: --branch requires a branch name"; exit 1; }
-            TBS_BRANCH="$2"
-            TBS_BRANCH_FORCED=1
-            shift 2
-            ;;
-        --testing)
-            TBS_BRANCH="testing"
-            TBS_BRANCH_FORCED=1
-            shift
-            ;;
-        --help|-h)
-            echo "Usage: $0 [--dry-run] [--branch NAME|--testing]"
-            echo ""
-            echo "Options:"
-            echo "  --dry-run       Show what would be done without modifying anything"
-            echo "  --branch NAME   Use specific TBS repo branch (default: latest)"
-            echo "  --testing       Shortcut for --branch testing (validated against origin)"
-            echo "  -h, --help      Show this help message"
-            echo ""
-            echo "Environment:"
-            echo "  TBS_BRANCH      Override default branch (e.g. TBS_BRANCH=main $0)"
-            exit 0
-            ;;
-        *)
-            echo "Unknown argument: $1"
-            exit 1
-            ;;
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        --help|-h) echo "Usage: $0 [--dry-run]"; exit 0 ;;
+        *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TBS_REPO="https://github.com/tbsdtv/linux_media.git"
+TBS_BRANCH="latest"
 SRC="/usr/src/tbs-drivers"
 KVER="$(uname -r)"
 KMAJ=$(echo "$KVER" | cut -d. -f1)
 KMIN=$(echo "$KVER" | cut -d. -f2)
+KBUILD="/lib/modules/${KVER}/build"
+KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
 BUILD_DIR="$SCRIPT_DIR/tbs-build-tmp"
 INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
 LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
 
-# Always build all TBS targets
-TARGET_DIRS=("dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod" "usb/dvb-usb")
-
-# ===========================================================================
-# Detect which branch of THIS repo (TBSonly) we run from (shown in header/log
-# and used by the update check). TBS branch selection defaults to 'latest'
-# for both main and dev - see the validation block below.
-# ===========================================================================
-SELF_BRANCH="unknown"
-SELF_COMMIT=""
-if [[ -d "$SCRIPT_DIR/.git" ]]; then
-    SELF_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-    SELF_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)
-    [[ "$SELF_BRANCH" == "HEAD" ]] && SELF_BRANCH="detached"
-fi
-
-# NOTE: tbsdtv/linux_media has only 'latest' (maintained), 'master' (stale) and
-# 'gse'. There is NO 'testing' branch - defaults go to 'latest' for both
-# main and dev; --branch/--testing are validated against origin below.
-if [[ -z "$TBS_BRANCH" ]]; then
-    TBS_BRANCH="latest"
-fi
-
-# Verify the requested TBS branch exists upstream before git clone/checkout
-if ! git ls-remote --exit-code --heads "$TBS_REPO" "$TBS_BRANCH" >/dev/null 2>&1; then
-    AVAIL=$(git ls-remote --heads "$TBS_REPO" 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||' | tr '\n' ' ')
-    warn "TBS branch '$TBS_BRANCH' not found in $TBS_REPO"
-    warn "Available branches: ${AVAIL:-<could not list - no network?>}"
-    if [[ "$TBS_BRANCH_FORCED" -eq 0 ]]; then
-        TBS_BRANCH="latest"
-        warn "Falling back to 'latest'."
-    else
-        error "Use --branch with one of the available branches listed above."
-    fi
-fi
+# tuners must be compiled before frontends/saa/tbs so Module.symvers is available
+TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod")
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG"; }
@@ -105,34 +41,9 @@ step()  { echo -e "\n${CYAN}>>> $*${NC}" | tee -a "$LOG"; }
 pi()    { echo -e "${BLUE}[PATCH]${NC} $*" | tee -a "$LOG"; }
 pause() { echo -e "${YELLOW}--- Press Enter to continue ---${NC}"; read -r; }
 
-# ===========================================================================
-# Privilege check
-# ===========================================================================
-if [[ "$EUID" -ne 0 ]]; then
-    echo -e "${RED}[ERROR]${NC} This script must be run as root or with sudo." >&2
-    exit 1
-fi
-
 [[ "$DRY_RUN" -eq 1 ]] && warn "DRY-RUN MODE - no files will be modified"
 echo "=== $(date) ===" > "$LOG"
-echo "  Kernel: $KVER / TBS branch: $TBS_BRANCH / Script: ${SELF_BRANCH}${SELF_COMMIT:+ $SELF_COMMIT} / DryRun: $DRY_RUN" | tee -a "$LOG"
-
-case "$SELF_BRANCH" in
-    dev)
-        warn "  DEVELOPMENT version of this script (branch: dev)."
-        warn "  It may not work correctly. For stable releases use 'main':"
-        warn "    git checkout main && git pull origin main"
-        BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
-        [[ "$BEHIND" -gt 0 ]] && warn "  Local dev is $BEHIND commit(s) behind origin/dev — run: git pull origin dev"
-        ;;
-    main)
-        info "  Stable branch (main) - OK."
-        ;;
-    *)
-        warn "  Could not determine script branch (zip download or detached HEAD?)."
-        warn "  Clone the repo to get updates: git clone https://github.com/home-debug/TBSonly.git"
-        ;;
-esac
+echo "  Kernel: $KVER / DryRun: $DRY_RUN" | tee -a "$LOG"
 
 ker_ge() { [[ "$KMAJ" -gt "$1" ]] || { [[ "$KMAJ" -eq "$1" ]] && [[ "$KMIN" -ge "$2" ]]; }; }
 
@@ -160,171 +71,34 @@ apply_python_patch() {
     python3 -c "$pycode" "$file" && pi "  OK" || warn "  python error: $file"
 }
 
+# Load patches from separate file
+PATCHES_FILE="$SCRIPT_DIR/kernel-patches.sh"
+[[ -f "$PATCHES_FILE" ]] || error "Patches file not found: $PATCHES_FILE"
+# shellcheck source=kernel-patches.sh
+source "$PATCHES_FILE"
+
 # ===========================================================================
-# Distribution & kernel source auto-detection
-# ===========================================================================
-detect_distro() {
-    [[ -f /etc/os-release ]] && source /etc/os-release
-    DISTRO="${ID:-unknown}"
-    DISTRO_LIKE="${ID_LIKE:-}"
-    info "  Distribution: $DISTRO"
+cleanup() {
+    info "Cleanup - restoring original files..."
+    local h1="$KHEADERS_COMMON/include/media/dvb_frontend.h"
+    local h2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"
+    local mf="$SRC/drivers/media/dvb-frontends/Makefile"
+    local mf_saa="$SRC/drivers/media/pci/saa716x/Makefile"
+    local mf_tbs="$SRC/drivers/media/pci/tbsecp3/Makefile"
+    local mf_tuners="$SRC/drivers/media/tuners/Makefile"
+    # Kernel headers: always restore (outside TBS tree)
+    [[ -f "${h1}.orig" ]]        && mv "${h1}.orig"        "$h1"        && info "  Restored: dvb_frontend.h"
+    [[ -f "${h2}.orig" ]]        && mv "${h2}.orig"        "$h2"        && info "  Restored: frontend.h"
+    # TBS Makefiles: do NOT restore - they must remain modified for modprobe to work
+    # Just remove the .orig backups
+    [[ -f "${mf}.orig" ]]        && rm "${mf}.orig"        && info "  Removed backup: dvb-frontends/Makefile.orig"
+    [[ -f "${mf_saa}.orig" ]]    && rm "${mf_saa}.orig"    && info "  Removed backup: saa716x/Makefile.orig"
+    [[ -f "${mf_tbs}.orig" ]]    && rm "${mf_tbs}.orig"    && info "  Removed backup: tbsecp3/Makefile.orig"
+    [[ -f "${mf_tuners}.orig" ]] && rm "${mf_tuners}.orig" && info "  Removed backup: tuners/Makefile.orig"
 }
+trap cleanup EXIT
 
-detect_kernel_sources() {
-    # KBUILD — directory used by make -C (contains arch-specific Makefile + .config)
-    local kbuild_candidates=(
-        "/lib/modules/${KVER}/build"
-        "/usr/src/kernels/${KVER}"
-        "/usr/src/linux-headers-${KVER}"
-        "/usr/src/linux-${KVER}"
-    )
 
-    KBUILD=""
-    for dir in "${kbuild_candidates[@]}"; do
-        [[ -d "$dir" && -f "$dir/Makefile" ]] && { KBUILD="$dir"; break; }
-    done
-
-    if [[ -z "$KBUILD" ]]; then
-        case "$DISTRO" in
-            debian|ubuntu|linuxmint|pop)
-                error "Kernel build dir not found.\n  Install: apt install linux-headers-${KVER}" ;;
-            fedora|rhel|centos|almalinux|rocky)
-                error "Kernel build dir not found.\n  Install: dnf install kernel-devel-${KVER}" ;;
-            arch|manjaro)
-                error "Kernel build dir not found.\n  Install: pacman -S linux-headers" ;;
-            opensuse*|suse*)
-                error "Kernel build dir not found.\n  Install: zypper in kernel-default-devel=${KVER%-default}" ;;
-            *)
-                error "Kernel build dir not found for ${KVER}.\n  Checked: ${kbuild_candidates[*]}" ;;
-        esac
-    fi
-    info "  KBuild: $KBUILD"
-
-    # Headers source for rsync into BUILD_DIR
-    # We need a tree with physical include/ files (not symlinks to outside).
-    # Priority: arch-specific headers (has generated headers) > common headers > KBUILD fallback
-    local hdr_candidates=()
-
-    # Debian/Ubuntu arch-specific headers (contains generated/autoconf headers)
-    [[ -d "/usr/src/linux-headers-${KVER}" ]] && hdr_candidates+=("/usr/src/linux-headers-${KVER}")
-
-    # Debian "common" split headers
-    local common=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
-    [[ -n "$common" && -d "$common" ]] && hdr_candidates+=("$common")
-
-    # Ubuntu "main" headers (named without -common, e.g. linux-headers-7.0.0-31)
-    # These are the common headers on Ubuntu. We look for ones matching our kernel version base.
-    local kver_base="${KVER%%-*}"
-    local ubuntu_hdr=$(find /usr/src -maxdepth 1 -name "linux-headers-${kver_base}" -type d | sort -V | tail -1)
-    [[ -n "$ubuntu_hdr" && -d "$ubuntu_hdr" && "$ubuntu_hdr" != "/usr/src/linux-headers-${KVER}" ]] && hdr_candidates+=("$ubuntu_hdr")
-
-    # Fedora/RHEL
-    [[ -d "/usr/src/kernels/${KVER}" ]] && hdr_candidates+=("/usr/src/kernels/${KVER}")
-
-    # Arch / generic
-    [[ -d "/usr/src/linux-${KVER}" ]] && hdr_candidates+=("/usr/src/linux-${KVER}")
-
-    KHEADERS_COMMON=""
-    for dir in "${hdr_candidates[@]}"; do
-        if [[ -d "$dir/include" ]]; then
-            KHEADERS_COMMON="$dir"
-            break
-        fi
-    done
-
-    # Fallback: if KBUILD itself has a full include/ tree (e.g. Fedora, Arch), use it
-    if [[ -z "$KHEADERS_COMMON" && -d "$KBUILD/include" ]]; then
-        KHEADERS_COMMON="$KBUILD"
-    fi
-
-    if [[ -z "$KHEADERS_COMMON" ]]; then
-        warn "  Could not find dedicated headers tree. Falling back to KBUILD."
-        KHEADERS_COMMON="$KBUILD"
-    fi
-    info "  Headers source: $KHEADERS_COMMON"
-}
-
-# ===========================================================================
-# Check upstream for a newer 'dev' branch and offer to switch
-# (users normally run 'main'; dev is development — may not work)
-# ===========================================================================
-check_for_dev_update() {
-    [[ -d "$SCRIPT_DIR/.git" ]] || return 0
-
-    step "Checking for updates on origin..."
-
-    git -C "$SCRIPT_DIR" fetch origin --quiet 2>/dev/null \
-        || { warn "  Could not reach origin — continuing without update check."; return 0; }
-
-    # Is there a dev branch upstream at all?
-    if ! git -C "$SCRIPT_DIR" rev-parse --verify --quiet origin/dev >/dev/null; then
-        info "  No 'dev' branch on origin — you are up to date."
-        return 0
-    fi
-
-    # Is origin/dev actually NEWER (ahead) than what we run now?
-    local ahead
-    ahead=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
-
-    if [[ "$ahead" -eq 0 ]]; then
-        info "  'dev' is not ahead of your current branch — nothing newer available."
-        return 0
-    fi
-
-    local dev_date cur_date
-    dev_date=$(git -C "$SCRIPT_DIR" log -1 --format='%cd' --date=short origin/dev 2>/dev/null || echo "?")
-    cur_date=$(git -C "$SCRIPT_DIR" log -1 --format='%cd' --date=short HEAD 2>/dev/null || echo "?")
-
-    warn "  Newer version available on 'dev': $ahead new commit(s) since $dev_date"
-    warn "  You are running '$SELF_BRANCH' (current commit: $cur_date)"
-    echo -e "${YELLOW}  +----------------------------------------------------+"
-    echo -e "  |  WARNING: 'dev' is a DEVELOPMENT version.          |"
-    echo -e "  |  It may NOT work correctly.                        |"
-    echo -e "  |  Stable releases are on 'main'.                    |"
-    echo -e "  +----------------------------------------------------+${NC}"
-
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        info "[DRY-RUN] Would run: git checkout dev && git pull --ff-only origin dev"
-        return 0
-    fi
-
-    if [[ -t 0 ]]; then
-        read -rp "  Switch to 'dev' and continue with the newer version? [y/N]: " ANS
-        if [[ "${ANS,,}" == "y" ]]; then
-            git -C "$SCRIPT_DIR" checkout dev 2>&1 | tee -a "$LOG"
-            git -C "$SCRIPT_DIR" pull --ff-only origin dev 2>&1 | tee -a "$LOG"
-            info "  Switched to 'dev'. Re-starting script..."
-            SELF_PATH="$SCRIPT_DIR/$(basename "$0")"
-            sleep 1
-            [[ ${#ORIG_ARGS[@]} -gt 0 ]] && exec bash "$SELF_PATH" "${ORIG_ARGS[@]}"
-            exec bash "$SELF_PATH"
-        fi
-        info "  Staying on '$SELF_BRANCH'."
-    else
-        warn "  Non-interactive shell — to switch manually run:"
-        warn "    git checkout dev && git pull origin dev"
-    fi
-}
-
-# ===========================================================================
-# Optional cleanup of stale modules from previous runs
-# ===========================================================================
-check_stale_modules() {
-    local updates_dir="/lib/modules/${KVER}/updates"
-    if [[ -d "$updates_dir" && -n "$(ls -A "$updates_dir" 2>/dev/null)" ]]; then
-        warn "  Existing modules found in: $updates_dir"
-        warn "  Old modules may cause version mismatch errors."
-        read -rp "  Remove existing modules before install? [y/N]: " ANS
-        if [[ "${ANS,,}" == "y" ]]; then
-            rm -rf "${updates_dir:?}"/*
-            info "  Cleared: $updates_dir"
-        fi
-    fi
-}
-
-# ===========================================================================
-# TBS Hardware Detection (cosmetic only, does not affect build targets)
-# ===========================================================================
 # ===========================================================================
 # TBS Hardware Detection (cosmetic only, does not affect build targets)
 # ===========================================================================
@@ -333,13 +107,12 @@ detect_tbs_cards() {
     py_script=$(mktemp /tmp/detect_tbs.XXXXXX.py)
 
     cat > "$py_script" << 'PYEOF'
-# -*- coding: utf-8 -*-
 import re, os, glob, subprocess, sys
+
+src = sys.argv[1] if len(sys.argv) > 1 else "/usr/src/tbs-drivers"
 
 def _open(p):
     return open(p, encoding="utf-8", errors="replace")
-
-src = sys.argv[1] if len(sys.argv) > 1 else "/usr/src/tbs-drivers"
 
 def parse_tbs_pci_map(src_path):
     tbs_map = {}
@@ -472,14 +245,14 @@ def _main_impl():
             elif v == 0x1131:
                 family = "SAA716x"
             else:
-                print(f"WARN|Unknown TBS bridge vendor {v:04x}: {tbs_map[key]}  [PCI {card.get('slot', '?')}]")
+                print("WARN|Unknown TBS bridge vendor %04x: %s  [PCI %s]" % (v, tbs_map[key], card.get('slot', '?')))
                 print("WARN|  No driver module assigned - please update the script.")
                 continue
             found.append({
                 "family": family,
                 "name": tbs_map[key],
                 "slot": card.get("slot", "?"),
-                "sub": f"{sv:04x}:{sd:04x}",
+                "sub": "%04x:%04x" % (sv, sd),
                 "rev": card.get("rev", "-")
             })
 
@@ -488,10 +261,10 @@ def _main_impl():
         return
 
     for c in found:
-        print(f"INFO|Found {c['name']}  [PCI {c['slot']}, subdev {c['sub']}, rev {c['rev']}]")
-        print(f"INFO|  -> requires {c['family']} driver")
+        print("INFO|Found %s  [PCI %s, subdev %s, rev %s]" % (c['name'], c['slot'], c['sub'], c['rev']))
+        print("INFO|  -> requires %s driver" % c['family'])
 
-    print(f"INFO|Total TBS cards detected: {len(found)}")
+    print("INFO|Total TBS cards detected: %d" % len(found))
 
 if __name__ == "__main__":
     main()
@@ -523,76 +296,25 @@ PYEOF
     rm -f "$py_script"
 }
 
-# Load patches from separate file
-PATCHES_FILE="$SCRIPT_DIR/kernel-patches.sh"
-[[ -f "$PATCHES_FILE" ]] || error "Patches file not found: $PATCHES_FILE"
-# shellcheck source=kernel-patches.sh
-source "$PATCHES_FILE"
-
-# ===========================================================================
-cleanup() {
-    info "Cleanup - restoring original files..."
-    local h1="$KHEADERS_COMMON/include/media/dvb_frontend.h"
-    local h2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"
-    local mf="$SRC/drivers/media/dvb-frontends/Makefile"
-    local mf_saa="$SRC/drivers/media/pci/saa716x/Makefile"
-    local mf_tbs="$SRC/drivers/media/pci/tbsecp3/Makefile"
-    local mf_tuners="$SRC/drivers/media/tuners/Makefile"
-    local mf_usb="$SRC/drivers/media/usb/dvb-usb/Makefile"
-    # Kernel headers: always restore (outside TBS tree)
-    [[ -f "${h1}.orig" ]]        && mv "${h1}.orig"        "$h1"        && info "  Restored: dvb_frontend.h"
-    [[ -f "${h2}.orig" ]]        && mv "${h2}.orig"        "$h2"        && info "  Restored: frontend.h"
-    # TBS Makefiles: do NOT restore - they must remain modified for modprobe to work
-    # Just remove the .orig backups
-    [[ -f "${mf}.orig" ]]        && rm "${mf}.orig"        && info "  Removed backup: dvb-frontends/Makefile.orig"
-    [[ -f "${mf_saa}.orig" ]]    && rm "${mf_saa}.orig"    && info "  Removed backup: saa716x/Makefile.orig"
-    [[ -f "${mf_tbs}.orig" ]]    && rm "${mf_tbs}.orig"    && info "  Removed backup: tbsecp3/Makefile.orig"
-    [[ -f "${mf_tuners}.orig" ]] && rm "${mf_tuners}.orig" && info "  Removed backup: tuners/Makefile.orig"
-    [[ -f "${mf_usb}.orig" ]]    && rm "${mf_usb}.orig"    && info "  Removed backup: usb/dvb-usb/Makefile.orig"
-}
-trap cleanup EXIT
-
 step "Checking kernel version (required: 7.0+)"
 ker_ge 7 0 || error "Kernel $KVER is too old. Required: 7.0+"
 info "Kernel $KVER - OK"
 
-step "Fetching/updating TBS sources -> $SRC"
-command -v git >/dev/null 2>&1 || error "Missing dependency: git (install it first)"
-if [[ "$DRY_RUN" -eq 0 ]]; then
-    if [[ -d "$SRC/.git" ]]; then
-        info "Updating existing repository..."
-        git -C "$SRC" fetch --progress origin              2>&1 | tee -a "$LOG"
-        git -C "$SRC" checkout "$TBS_BRANCH"               2>&1 | tee -a "$LOG"
-        git -C "$SRC" pull --progress origin "$TBS_BRANCH" 2>&1 | tee -a "$LOG"
-    else
-        info "Cloning TBS repository (this may take a few minutes)..."
-        git clone --progress --depth=1 --branch "$TBS_BRANCH" "$TBS_REPO" "$SRC" 2>&1 | tee -a "$LOG"
-    fi
-    info "Sources ready in: $SRC"
-else
-    info "[DRY-RUN] Skipping git."
-fi
-pause
-
 step "Checking build environment"
 echo "  Kernel:         $KVER"            | tee -a "$LOG"
+echo "  KBuild:         $KBUILD"          | tee -a "$LOG"
 echo "  TBS sources:    $SRC"             | tee -a "$LOG"
+echo "  Common headers: $KHEADERS_COMMON" | tee -a "$LOG"
 echo "  Log:            $LOG"             | tee -a "$LOG"
 
-detect_distro
-detect_kernel_sources
-
+[[ -d "$KBUILD" ]] || error "Kernel build directory not found: $KBUILD"
+[[ -n "$KHEADERS_COMMON" && -d "$KHEADERS_COMMON" ]] || error "linux-headers-*-common not found"
 for cmd in git make gcc rsync python3; do
     command -v "$cmd" &>/dev/null || error "Missing dependency: $cmd"
 done
 
-check_for_dev_update
-
-# TBS-extended headers: the TBS tree carries frontend extensions (modcode,
-# set_property, read_temp, FE_ECP3FW_*, FE_24CXX_*) that distro headers lack.
-# The temporary header patch MUST source from the TBS tree.
-H1="$SRC/include/media/dvb_frontend.h"
-H2="$SRC/include/uapi/linux/dvb/frontend.h"
+H1="$KHEADERS_COMMON/include/media/dvb_frontend.h"
+H2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"
 MF="$SRC/drivers/media/dvb-frontends/Makefile"
 MF_SAA="$SRC/drivers/media/pci/saa716x/Makefile"
 MF_TBS="$SRC/drivers/media/pci/tbsecp3/Makefile"
@@ -613,6 +335,22 @@ detect_tbs_cards
 
 pause
 
+step "Fetching/updating TBS sources -> $SRC"
+if [[ "$DRY_RUN" -eq 0 ]]; then
+    if [[ -d "$SRC/.git" ]]; then
+        info "Updating existing repository..."
+        git -C "$SRC" fetch --progress origin              2>&1 | tee -a "$LOG"
+        git -C "$SRC" checkout "$TBS_BRANCH"               2>&1 | tee -a "$LOG"
+        git -C "$SRC" pull --progress origin "$TBS_BRANCH" 2>&1 | tee -a "$LOG"
+    else
+        info "Cloning TBS repository (this may take a few minutes)..."
+        git clone --progress --depth=1 --branch "$TBS_BRANCH" "$TBS_REPO" "$SRC" 2>&1 | tee -a "$LOG"
+    fi
+    info "Sources ready in: $SRC"
+else
+    info "[DRY-RUN] Skipping git."
+fi
+pause
 
 # NOTE: apply_kernel_api_patches must run before BUILD_DIR and before overwriting TBS Makefiles
 apply_kernel_api_patches
@@ -637,24 +375,10 @@ fi
 info "Build directory ready."
 
 step "Temporarily patching kernel headers"
-if [[ "$H1" == "$SRC/include/media/dvb_frontend.h" ]]; then
-    info "  dvb_frontend.h: already sourced from the TBS tree - no patch needed"
-elif [[ -e "$H1" ]]; then
-    cp "$H1" "${H1}.orig" && cp "$SRC/include/media/dvb_frontend.h" "$H1"
-    info "  Patched: dvb_frontend.h"
-else
-    H1="$SRC/include/media/dvb_frontend.h"
-    info "  dvb_frontend.h: target missing, using TBS header directly"
-fi
-if [[ "$H2" == "$SRC/include/uapi/linux/dvb/frontend.h" ]]; then
-    info "  frontend.h (uapi): already sourced from the TBS tree - no patch needed"
-elif [[ -e "$H2" ]]; then
-    cp "$H2" "${H2}.orig" && cp "$SRC/include/uapi/linux/dvb/frontend.h" "$H2"
-    info "  Patched: frontend.h (uapi)"
-else
-    H2="$SRC/include/uapi/linux/dvb/frontend.h"
-    info "  frontend.h (uapi): target missing, using TBS header directly"
-fi
+cp "$H1" "${H1}.orig" && cp "$SRC/include/media/dvb_frontend.h" "$H1"
+info "  Patched: dvb_frontend.h"
+cp "$H2" "${H2}.orig" && cp "$SRC/include/uapi/linux/dvb/frontend.h" "$H2"
+info "  Patched: frontend.h (uapi)"
 
 step "Detecting missing CONFIG_DVB_* defines"
 KERNEL_CONFIG="/boot/config-${KVER}"
@@ -759,55 +483,6 @@ tbsecp3-objs := tbsecp3-core.o tbsecp3-cards.o tbsecp3-i2c.o tbsecp3-dma.o \
 obj-m += tbsecp3.o
 MAKEFILE
 info "tbsecp3 Makefile ready."
-
-step "Creating minimal Makefile for usb/dvb-usb"
-cp "$SRC/drivers/media/usb/dvb-usb/Makefile" "${SRC}/drivers/media/usb/dvb-usb/Makefile.orig" 2>/dev/null || true
-cat > "$SRC/drivers/media/usb/dvb-usb/Makefile" << 'MAKEFILE'
-ccflags-y += -Idrivers/media/dvb-core
-ccflags-y += -Idrivers/media/dvb-frontends
-ccflags-y += -Idrivers/media/tuners
-dvb-usb-tbs5520-objs := tbs5520.o
-dvb-usb-tbs5520se-objs := tbs5520se.o
-dvb-usb-tbs5580-objs := tbs5580.o
-dvb-usb-tbs5590-objs := tbs5590.o
-dvb-usb-tbs5880-objs := tbs5880.o
-dvb-usb-tbs5881-objs := tbs5881.o
-dvb-usb-tbs5925-objs := tbs5925.o
-dvb-usb-tbs5930-objs := tbs5930.o
-dvb-usb-tbs5220-objs := tbs5220.o
-dvb-usb-tbs5230-objs := tbs5230.o
-dvb-usb-tbs5301-objs := tbs5301.o
-dvb-usb-tbs5530-objs := tbs5530.o
-dvb-usb-tbs5922se-objs := tbs5922se.o
-dvb-usb-tbs5927-objs := tbs5927.o
-dvb-usb-tbs5931-objs := tbs5931.o
-dvb-usb-tbsqbox-objs := tbs-qbox.o
-dvb-usb-tbsqbox2-objs := tbs-qbox2.o
-dvb-usb-tbsqbox2ci-objs := tbs-qbox2ci.o
-dvb-usb-tbsqbox22-objs := tbs-qbox22.o
-dvb-usb-tbsqboxs2-objs := tbs-qboxs2.o
-obj-m += dvb-usb-tbs5520.o
-obj-m += dvb-usb-tbs5520se.o
-obj-m += dvb-usb-tbs5580.o
-obj-m += dvb-usb-tbs5590.o
-obj-m += dvb-usb-tbs5880.o
-obj-m += dvb-usb-tbs5881.o
-obj-m += dvb-usb-tbs5925.o
-obj-m += dvb-usb-tbs5930.o
-obj-m += dvb-usb-tbs5220.o
-obj-m += dvb-usb-tbs5230.o
-obj-m += dvb-usb-tbs5301.o
-obj-m += dvb-usb-tbs5530.o
-obj-m += dvb-usb-tbs5922se.o
-obj-m += dvb-usb-tbs5927.o
-obj-m += dvb-usb-tbs5931.o
-obj-m += dvb-usb-tbsqbox.o
-obj-m += dvb-usb-tbsqbox2.o
-obj-m += dvb-usb-tbsqbox2ci.o
-obj-m += dvb-usb-tbsqbox22.o
-obj-m += dvb-usb-tbsqboxs2.o
-MAKEFILE
-info "usb/dvb-usb Makefile ready."
 pause
 
 step "Compilation"
@@ -865,7 +540,7 @@ for subdir in "${TARGET_DIRS[@]}"; do
     info "Compiling: $subdir"
     MODULE_LOG=$(mktemp)
     if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" \
-            KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" -j$(nproc) modules 2>&1 \
+            KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" modules 2>&1 \
             | tee "$MODULE_LOG" | tee -a "$LOG"; then
         info "  OK: $subdir"; SUCCESS+=("$subdir")
         [[ -f "$target/Module.symvers" ]] && \
@@ -906,7 +581,6 @@ info "Log: $LOG"
 pause
 
 step "Module installation"
-check_stale_modules
 echo -e "${CYAN}  Install modules for kernel ${KVER}?"
 echo -e "  Target: ${INSTALL_DIR}${NC}"
 read -rp "  [Y/n]: " ANSWER
