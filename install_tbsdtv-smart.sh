@@ -812,7 +812,6 @@ pause
 
 step "Compilation"
 EXTRA_CFLAGS="-I${BUILD_DIR}/include -I${BUILD_DIR}/include/uapi \
-    -I${SRC}/include/uapi \
     -I${SRC}/drivers/media/tuners \
     -I${SRC}/drivers/media/dvb-frontends \
     -I${SRC}/drivers/media/dvb-frontends/stid135 \
@@ -866,7 +865,6 @@ for subdir in "${TARGET_DIRS[@]}"; do
     info "Compiling: $subdir"
     MODULE_LOG=$(mktemp)
     if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" \
-            KBUILD_CPPFLAGS="-I${SRC}/include/uapi" \
             KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" -j$(nproc) modules 2>&1 \
             | tee "$MODULE_LOG" | tee -a "$LOG"; then
         info "  OK: $subdir"; SUCCESS+=("$subdir")
