@@ -25,12 +25,40 @@ KVER="$(uname -r)"
 KMAJ=$(echo "$KVER" | cut -d. -f1)
 KMIN=$(echo "$KVER" | cut -d. -f2)
 KBUILD="/lib/modules/${KVER}/build"
-KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
-# Ubuntu variant: linux-headers-x.y.z-a (no -generic suffix)
-if [[ -z "$KHEADERS_COMMON" || ! -d "$KHEADERS_COMMON" ]]; then
-    KVER_BASE="${KVER%%-*}"
-    KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-${KVER_BASE}" -type d | sort -V | tail -1)
+# Kernel build dir (make -C target) - checked first
+if [[ -d "/lib/modules/${KVER}/build" ]]; then
+    KBUILD="/lib/modules/${KVER}/build"
+elif [[ -d "/usr/src/kernels/${KVER}" ]]; then
+    KBUILD="/usr/src/kernels/${KVER}"   # Fedora/RHEL
+elif [[ -d "/usr/src/linux-headers-${KVER}" ]]; then
+    KBUILD="/usr/src/linux-headers-${KVER}"  # Debian/Ubuntu arch-specific
+else
+    KBUILD="/lib/modules/${KVER}/build"  # fallback, will error later if missing
 fi
+
+# Headers source tree (rsync into BUILD_DIR)
+KHEADERS_COMMON=""
+detect_distro
+case "$DISTRO" in
+    debian|ubuntu|linuxmint|pop)
+        KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
+        # Ubuntu variant: linux-headers-x.y.z-a (no -generic suffix)
+        if [[ -z "$KHEADERS_COMMON" || ! -d "$KHEADERS_COMMON" ]]; then
+            KVER_BASE="${KVER%%-*}"
+            KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-${KVER_BASE}" -type d | sort -V | tail -1)
+        fi
+        ;;
+    fedora|rhel|centos|almalinux|rocky)
+        KHEADERS_COMMON="/usr/src/kernels/${KVER}" ;;
+    arch|manjaro)
+        KHEADERS_COMMON="/usr/src/linux-${KVER}" ;;
+    opensuse*|suse*)
+        KHEADERS_COMMON="/usr/src/linux-${KVER}" ;;
+    *)
+        KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
+        [[ -z "$KHEADERS_COMMON" || ! -d "$KHEADERS_COMMON" ]] && KHEADERS_COMMON="/usr/src/kernels/${KVER}"
+        ;;
+esac
 BUILD_DIR="$SCRIPT_DIR/tbs-build-tmp"
 INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
 LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
@@ -51,6 +79,15 @@ echo "=== $(date) ===" > "$LOG"
 echo "  Kernel: $KVER / DryRun: $DRY_RUN" | tee -a "$LOG"
 
 ker_ge() { [[ "$KMAJ" -gt "$1" ]] || { [[ "$KMAJ" -eq "$1" ]] && [[ "$KMIN" -ge "$2" ]]; }; }
+
+# ===========================================================================
+# Distribution detection (for kernel-source hints)
+# ===========================================================================
+detect_distro() {
+    [[ -f /etc/os-release ]] && source /etc/os-release
+    DISTRO="${ID:-unknown}"
+    info "  Distribution: $DISTRO"
+}
 
 apply_sed() {
     local file="$1" desc="$2" expr="$3"
@@ -314,12 +351,21 @@ info "Kernel $KVER - OK"
 step "Checking build environment"
 echo "  Kernel:         $KVER"            | tee -a "$LOG"
 echo "  KBuild:         $KBUILD"          | tee -a "$LOG"
+echo "  Headers source: $KHEADERS_COMMON" | tee -a "$LOG"
 echo "  TBS sources:    $SRC"             | tee -a "$LOG"
-echo "  Common headers: $KHEADERS_COMMON" | tee -a "$LOG"
 echo "  Log:            $LOG"             | tee -a "$LOG"
 
-[[ -d "$KBUILD" ]] || error "Kernel build directory not found: $KBUILD"
-[[ -n "$KHEADERS_COMMON" && -d "$KHEADERS_COMMON" ]] || error "linux-headers-*-common not found"
+[[ -d "$KBUILD" ]] || {
+    case "$DISTRO" in
+        debian|ubuntu|linuxmint|pop) hint="apt install linux-headers-${KVER}" ;;
+        fedora|rhel|centos|almalinux|rocky) hint="dnf install kernel-devel-${KVER}" ;;
+        arch|manjaro) hint="pacman -S linux-headers" ;;
+        opensuse*|suse*) hint="zypper in kernel-default-devel=${KVER%-default}" ;;
+        *) hint="install kernel headers for ${KVER}" ;;
+    esac
+    error "Kernel build directory not found: $KBUILD\n  Try: $hint"
+}
+[[ -n "$KHEADERS_COMMON" && -d "$KHEADERS_COMMON" ]] || error "Kernel headers source not found for ${KVER}"
 for cmd in git make gcc rsync python3; do
     command -v "$cmd" &>/dev/null || error "Missing dependency: $cmd"
 done
