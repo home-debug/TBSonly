@@ -324,3 +324,37 @@ REVERT: Module.symvers seeding was wrong (2026-09-20):
     earlier "undefined cx24117_get_i2c_adapter" report was not reproduced
     on clean tree after this revert path, and dvb-frontends precedes
     saa716x in TARGET_DIRS, which is the load-bearing ordering.
+
+ROOT CAUSE #2 - header source mismatch (2026-09-20, clean build):
+  - Symptom: dvb_frontend.c failed with "no member named modcode",
+    "MODCODE_ALL undeclared", "FE_READ_TEMP undeclared", "no member named
+    set_property" etc.
+  - Fetched the REAL frontend.h from TBS latest - it DOES contain all these
+    extensions (DTV_MODCODE, MODCODE_ALL, FE_READ_TEMP, FE_ECP3FW_READ,
+    FE_24CXX_READ, struct dvb_frontend_ops with read_temp/spi_read/spi_write/
+    mcu_read/set_property).
+  - But H1/H2 pointed to $KHEADERS_COMMON (distro), which on Debian is the
+    arch-specific headers package that lacks include/media/dvb_frontend.h
+    entirely (cp: cannot stat), and even -common has only the vanilla kernel
+    frontend.h without TBS extensions.
+  - So the compiler fell back to the system /usr/include/linux/dvb/frontend.h
+    (vanilla), causing all the missing-member errors on a from-scratch build.
+  - Why it "worked" before: previous builds reused stale .o files from an
+    earlier build (dirty tree), so the compile never re-ran from zero.
+  - FIX: H1/H2 -> $SRC/include/media/dvb_frontend.h and
+    $SRC/include/uapi/linux/dvb/frontend.h (TBS tree). $SRC is guaranteed to
+    exist at that point (fetch precedes patches).
+
+Include path fix for clean builds (2026-09-20):
+  - dvb_frontend.c and several frontends still failed with missing TBS
+    extensions even after H1/H2 pointed at the TBS tree, because the
+    compiler never saw ${SRC}/include in its search path.
+  - KCFLAGS alone is not reliable for -I injection in kbuild external-module
+    builds; KBUILD_CPPFLAGS is honored. Also the isolated BUILD_DIR was
+    seeded from KHEADERS_COMMON first, which can shadow the TBS uapi copy.
+  - FIX: (1) add -I${SRC}/include -I${SRC}/include/uapi to EXTRA_CFLAGS;
+    (2) pass KBUILD_CPPFLAGS="-I${SRC}/include -I${SRC}/include/uapi" to
+    every per-target make invocation.
+  - This is what allowed from-scratch builds to finally resolve the TBS
+    frontend.h extensions (modcode, set_property, read_temp, ecp3/eeprom
+    ioctls) without relying on stale objects.

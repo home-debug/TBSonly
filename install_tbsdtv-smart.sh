@@ -588,8 +588,11 @@ done
 
 check_for_dev_update
 
-H1="$KHEADERS_COMMON/include/media/dvb_frontend.h"
-H2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"
+# TBS-extended headers: the TBS tree carries frontend extensions (modcode,
+# set_property, read_temp, FE_ECP3FW_*, FE_24CXX_*) that distro headers lack.
+# The temporary header patch MUST source from the TBS tree.
+H1="$SRC/include/media/dvb_frontend.h"
+H2="$SRC/include/uapi/linux/dvb/frontend.h"
 MF="$SRC/drivers/media/dvb-frontends/Makefile"
 MF_SAA="$SRC/drivers/media/pci/saa716x/Makefile"
 MF_TBS="$SRC/drivers/media/pci/tbsecp3/Makefile"
@@ -795,6 +798,7 @@ pause
 
 step "Compilation"
 EXTRA_CFLAGS="-I${BUILD_DIR}/include -I${BUILD_DIR}/include/uapi \
+    -I${SRC}/include -I${SRC}/include/uapi \
     -I${SRC}/drivers/media/tuners \
     -I${SRC}/drivers/media/dvb-frontends \
     -I${SRC}/drivers/media/dvb-frontends/stid135 \
@@ -848,6 +852,7 @@ for subdir in "${TARGET_DIRS[@]}"; do
     info "Compiling: $subdir"
     MODULE_LOG=$(mktemp)
     if make -C "$KBUILD" M="$target" KCFLAGS="$EXTRA_CFLAGS" \
+            KBUILD_CPPFLAGS="-I${SRC}/include -I${SRC}/include/uapi" \
             KBUILD_EXTRA_SYMBOLS="$COMBINED_SYMVERS" -j$(nproc) modules 2>&1 \
             | tee "$MODULE_LOG" | tee -a "$LOG"; then
         info "  OK: $subdir"; SUCCESS+=("$subdir")
