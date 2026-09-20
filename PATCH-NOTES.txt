@@ -284,3 +284,16 @@ Silent detection failure fix (2026-09-20, after user log showed empty step):
     still finds TBS6902, rc=0.
   - If detection still prints nothing on the user machine, the new WARN
     line will name the exact error, and details land in install log.
+
+ROOT CAUSE FOUND - detection SyntaxError under C locale (2026-09-21):
+  - User ran the extracted detector manually -> SyntaxError at line 140:
+    "Non-UTF-8 code starting with 0x97" (an em-dash U+2014 that Python's
+    source decoder misread under a non-UTF8 locale).
+  - This killed the detector BEFORE any output, which is why the script
+    showed nothing, and stderr was previously swallowed (now fixed to go
+    to the log).
+  - FIX: replaced the em-dash with ASCII "-" and added a
+    "# -*- coding: utf-8 -*-" header to the heredoc. The detector is now
+    ASCII-only and locale-immune.
+  - Verified: full run under LC_ALL=C against a fake tree -> finds
+    TBS6902, rc=0.

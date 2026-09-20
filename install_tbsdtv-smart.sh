@@ -333,6 +333,7 @@ detect_tbs_cards() {
     py_script=$(mktemp /tmp/detect_tbs.XXXXXX.py)
 
     cat > "$py_script" << 'PYEOF'
+# -*- coding: utf-8 -*-
 import re, os, glob, subprocess, sys
 
 def _open(p):
@@ -472,7 +473,7 @@ def _main_impl():
                 family = "SAA716x"
             else:
                 print(f"WARN|Unknown TBS bridge vendor {v:04x}: {tbs_map[key]}  [PCI {card.get('slot', '?')}]")
-                print(f"WARN|  No driver module assigned — please update the script.")
+                print("WARN|  No driver module assigned - please update the script.")
                 continue
             found.append({
                 "family": family,
