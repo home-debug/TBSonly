@@ -267,3 +267,20 @@ Detection placement - final (2026-09-20, per user request):
     -> Environment OK -> detect_tbs_cards -> patches -> build.
   - Added explicit "Missing dependency: git" guard at the fetch step
     (fetch now precedes the general dependency loop).
+
+Silent detection failure fix (2026-09-20, after user log showed empty step):
+  - User log: "Detecting TBS cards from source tree..." then nothing.
+  - Reproduced the mechanism locally: the python detector itself works
+    (simulated lspci + fake tree found TBS6902), so on the real tree it
+    must have CRASHED - and "2>/dev/null" hid it, and the empty output
+    loop printed nothing. Most probable cause: UnicodeDecodeError from a
+    non-UTF8 byte in one of the parsed TBS files (open() defaults to
+    strict UTF-8).
+  - FIX (3 layers):
+    1) all file reads via _open(p) with encoding="utf-8", errors="replace"
+    2) main() wrapped in try/except -> visible "WARN|Detection error: ..."
+    3) stderr redirected to $LOG instead of /dev/null
+  - Regression test: fake tree + poisoned latin-1 .h header -> detector
+    still finds TBS6902, rc=0.
+  - If detection still prints nothing on the user machine, the new WARN
+    line will name the exact error, and details land in install log.

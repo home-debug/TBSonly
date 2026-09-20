@@ -335,6 +335,9 @@ detect_tbs_cards() {
     cat > "$py_script" << 'PYEOF'
 import re, os, glob, subprocess, sys
 
+def _open(p):
+    return open(p, encoding="utf-8", errors="replace")
+
 src = sys.argv[1] if len(sys.argv) > 1 else "/usr/src/tbs-drivers"
 
 def parse_tbs_pci_map(src_path):
@@ -346,13 +349,13 @@ def parse_tbs_pci_map(src_path):
 
     board_names = {}
     if os.path.exists(cards):
-        with open(cards) as f:
+        with _open(cards) as f:
             content = f.read()
         for m in re.finditer(r'\[([A-Z_0-9]+)\]\s*=\s*\{[^}]*?\.name\s*=\s*"([^"]+)"', content, re.DOTALL):
             board_names[m.group(1)] = m.group(2).strip()
 
     if os.path.exists(core):
-        with open(core) as f:
+        with _open(core) as f:
             content = f.read()
         for m in re.finditer(r'TBSECP3_ID\(([A-Z_0-9]+),0x([0-9a-fA-F]+),0x([0-9a-fA-F]+)\)', content):
             bid, sv, sd = m.groups()
@@ -367,7 +370,7 @@ def parse_tbs_pci_map(src_path):
 
     defs = {}
     for h in glob.glob(os.path.join(src_path, "drivers/media/pci/saa716x/*.h")):
-        with open(h) as f:
+        with _open(h) as f:
             for m in re.finditer(r'#define\s+([A-Z_][A-Z0-9_]*)\s+0x([0-9a-fA-F]+)', f.read()):
                 defs[m.group(1)] = int(m.group(2), 16)
 
@@ -376,7 +379,7 @@ def parse_tbs_pci_map(src_path):
     defs.setdefault('SAA7161', 0x7161)
     defs.setdefault('SAA7162', 0x7162)
 
-    with open(budget) as f:
+    with _open(budget) as f:
         budget_lines = f.readlines()
 
     for line in budget_lines:
@@ -440,6 +443,12 @@ def scan_pci():
     return cards
 
 def main():
+    try:
+        _main_impl()
+    except Exception as e:
+        print("WARN|Detection error: " + repr(e))
+
+def _main_impl():
     if not os.path.isdir(src):
         print("WARN|TBS sources not found. Skipping detection.")
         sys.exit(0)
@@ -501,7 +510,7 @@ PYEOF
         return
     fi
 
-    py_out=$(python3 "$py_script" "$SRC" 2>/dev/null || true)
+    py_out=$(python3 "$py_script" "$SRC" 2>>"$LOG" || true)
 
     while IFS='|' read -r prefix msg; do
         case "$prefix" in
