@@ -331,8 +331,6 @@ if [[ "$STALE" -eq 1 ]]; then
 fi
 info "Environment OK."
 
-detect_tbs_cards
-
 pause
 
 step "Fetching/updating TBS sources -> $SRC"
@@ -356,6 +354,8 @@ pause
 apply_kernel_api_patches
 [[ "$DRY_RUN" -eq 1 ]] && { info "Dry-run complete."; exit 0; }
 pause
+
+detect_tbs_cards
 
 step "Creating isolated build directory"
 rm -rf "$BUILD_DIR"
