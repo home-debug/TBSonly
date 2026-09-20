@@ -246,3 +246,24 @@ USB QBox object-name fix (2026-09-20, after user build log):
     cross-checked against the TBS source listing - all verified.
   - Note: module NAMES (dvb-usb-tbsqbox2.o) are correct and unchanged -
     only the internal object references were wrong.
+
+Hardware detection placement fix (2026-09-20, after user report):
+  - User: "compiled OK but no card detection info shown".
+  - Cause: detect_tbs_cards was called BEFORE the fetch step and silently
+    returned when /usr/src/tbs-drivers did not exist yet (first run).
+    Function itself verified intact in the package.
+  - FIX: call moved to AFTER apply_kernel_api_patches / dry-run exit, so
+    the freshly-cloned tree is always present. Also added an explicit
+    warning when lspci (pciutils) is missing - previously scan_pci()
+    silently returned an empty list ("No TBS cards detected").
+  - Verified call order: fetch -> patches -> dry-run exit -> detect -> build.
+
+Detection placement - final (2026-09-20, per user request):
+  - User: "cards should be detected where the system is checked".
+  - RESTRUCTURED: fetch step moved BEFORE "Checking build environment";
+    detect_tbs_cards now runs right after "Environment OK." inside the
+    system-check phase. Call order verified programmatically:
+    kernel check -> fetch -> env check (distro/sources/deps/update check)
+    -> Environment OK -> detect_tbs_cards -> patches -> build.
+  - Added explicit "Missing dependency: git" guard at the fetch step
+    (fetch now precedes the general dependency loop).

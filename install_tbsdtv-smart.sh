@@ -489,6 +489,12 @@ PYEOF
 
     step "Detecting TBS cards from source tree..."
 
+    if ! command -v lspci >/dev/null 2>&1; then
+        warn "  lspci not found (package: pciutils). Skipping hardware detection."
+        rm -f "$py_script"
+        return
+    fi
+
     if [[ ! -d "$SRC/drivers/media/pci/tbsecp3" && ! -d "$SRC/drivers/media/pci/saa716x" ]]; then
         warn "  TBS sources not found yet. Skipping hardware detection."
         rm -f "$py_script"
@@ -540,6 +546,24 @@ step "Checking kernel version (required: 7.0+)"
 ker_ge 7 0 || error "Kernel $KVER is too old. Required: 7.0+"
 info "Kernel $KVER - OK"
 
+step "Fetching/updating TBS sources -> $SRC"
+command -v git >/dev/null 2>&1 || error "Missing dependency: git (install it first)"
+if [[ "$DRY_RUN" -eq 0 ]]; then
+    if [[ -d "$SRC/.git" ]]; then
+        info "Updating existing repository..."
+        git -C "$SRC" fetch --progress origin              2>&1 | tee -a "$LOG"
+        git -C "$SRC" checkout "$TBS_BRANCH"               2>&1 | tee -a "$LOG"
+        git -C "$SRC" pull --progress origin "$TBS_BRANCH" 2>&1 | tee -a "$LOG"
+    else
+        info "Cloning TBS repository (this may take a few minutes)..."
+        git clone --progress --depth=1 --branch "$TBS_BRANCH" "$TBS_REPO" "$SRC" 2>&1 | tee -a "$LOG"
+    fi
+    info "Sources ready in: $SRC"
+else
+    info "[DRY-RUN] Skipping git."
+fi
+pause
+
 step "Checking build environment"
 echo "  Kernel:         $KVER"            | tee -a "$LOG"
 echo "  TBS sources:    $SRC"             | tee -a "$LOG"
@@ -576,22 +600,6 @@ detect_tbs_cards
 
 pause
 
-step "Fetching/updating TBS sources -> $SRC"
-if [[ "$DRY_RUN" -eq 0 ]]; then
-    if [[ -d "$SRC/.git" ]]; then
-        info "Updating existing repository..."
-        git -C "$SRC" fetch --progress origin              2>&1 | tee -a "$LOG"
-        git -C "$SRC" checkout "$TBS_BRANCH"               2>&1 | tee -a "$LOG"
-        git -C "$SRC" pull --progress origin "$TBS_BRANCH" 2>&1 | tee -a "$LOG"
-    else
-        info "Cloning TBS repository (this may take a few minutes)..."
-        git clone --progress --depth=1 --branch "$TBS_BRANCH" "$TBS_REPO" "$SRC" 2>&1 | tee -a "$LOG"
-    fi
-    info "Sources ready in: $SRC"
-else
-    info "[DRY-RUN] Skipping git."
-fi
-pause
 
 # NOTE: apply_kernel_api_patches must run before BUILD_DIR and before overwriting TBS Makefiles
 apply_kernel_api_patches

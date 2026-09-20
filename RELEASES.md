@@ -21,6 +21,8 @@
 - README: full clone-and-checkout instructions in the Usage section, "How it works" updated
 
 ### Fixes
+- **Step order restructured per user request**: fetching TBS sources now happens BEFORE the build-environment check, and `detect_tbs_cards` runs inside the system-check phase (after `detect_distro`/`detect_kernel_sources`), so card info always appears together with the environment summary. Explicit `git` guard added at the fetch step
+- **Hardware detection now runs after the sources are fetched** (previously before, so a first-time run silently skipped it); a clear warning is printed when `lspci` (pciutils) is missing instead of a bare "no cards detected"
 - **USB QBox build fixed**: object names corrected to the real source names (`tbs-qbox.o`, `tbs-qbox2.o`, `tbs-qbox22.o`, `tbs-qbox2ci.o`, `tbs-qboxs2.o` - inherited from v19-dev as `tbsqbox*.o`, which broke the whole `usb/dvb-usb` build with "No rule to make target"). All 20 USB module objects now verified against the TBS tree Makefile
 - **Critical: broken line continuations in all script-added patch blocks** (`\\` instead of `\`) - every `apply_sed_if_match`/`apply_python_patch` call received only its first argument and aborted with `$2: unbound variable` under `set -u`. Original v19 patches were unaffected. Fixed and verified with a stub harness that asserts the argument count of every call (both with and without `TBS_PERF=1`)
 - Restored the `dvb-pll.c` IDA patch (present in a local, never-pushed kernel-patches.sh revision) with the corrected path `dvb-frontends/dvb-pll.c` (was `dvb-core/` - always warned "file not found"). Defensive: dvb-pll is not in this installer's build targets
