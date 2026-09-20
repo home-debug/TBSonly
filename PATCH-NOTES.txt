@@ -234,3 +234,15 @@ CRITICAL FIX - broken line continuations (2026-09-20, after user crash log):
     TBS_PERF=1 and without -> "ALL CALLS OK" on both paths.
   - LESSON: bash -n does NOT validate continuation semantics; the stub
     harness is now the required pre-release check for kernel-patches.sh.
+
+USB QBox object-name fix (2026-09-20, after user build log):
+  - Log: "No rule to make target tbsqbox.o" in usb/dvb-usb. The 5 newly
+    enabled modules (tbs5230, tbs5922se, tbs5927, tbs5931) compiled fine.
+  - ROOT CAUSE: inherited from v19-dev - the custom Makefile referenced
+    tbsqbox.o/tbsqbox2.o/... but the TBS sources are named tbs-qbox.c,
+    tbs-qbox2.c, ... (hyphenated). Verified against the TBS tree Makefile:
+    dvb-usb-tbsqbox-objs = tbs-qbox.o etc.
+  - FIX: 5 object references corrected. All 20 USB module objects then
+    cross-checked against the TBS source listing - all verified.
+  - Note: module NAMES (dvb-usb-tbsqbox2.o) are correct and unchanged -
+    only the internal object references were wrong.
