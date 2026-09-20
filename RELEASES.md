@@ -21,6 +21,7 @@
 - README: full clone-and-checkout instructions in the Usage section, "How it works" updated
 
 ### Fixes
+- Restored the `dvb-pll.c` IDA patch (present in a local, never-pushed kernel-patches.sh revision) with the corrected path `dvb-frontends/dvb-pll.c` (was `dvb-core/` - always warned "file not found"). Defensive: dvb-pll is not in this installer's build targets
 - `--branch NAME` argument parsing fixed (previously the branch name was consumed incorrectly and could trigger "Unknown argument")
 - **TBS `testing` branch does not exist** — `tbsdtv/linux_media` has only `latest` (maintained), `master` (stale, tasklet-based) and `gse`; the old `dev`→`testing` mapping and `--testing` flag failed at clone time. Default is now `latest` for both branches, with upstream validation
 - **USB build fixed**: removed `dvb-usb-tbs5920` / `dvb-usb-tbs5922` module targets — these driver sources do not exist in the TBS tree, which caused the entire `usb/dvb-usb` build to fail ("No rule to make target") on every run

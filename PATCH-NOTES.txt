@@ -197,3 +197,20 @@ README capture-section driver line fix (2026-09-20, ~01:05):
     tbs_pcie2-cap.ko. Exact wiring (who registers what) NOT verified -
     tbsecp3-dvb.c exceeds fetch size limit. README now states only the
     verified facts.
+
+dvb-pll patch investigation (2026-09-20, after user build log):
+  - User log showed "[WARN] Patch dvb-pll ...: file not found:
+    /usr/src/tbs-drivers/drivers/media/dvb-core/dvb-pll.c".
+  - Checked: dvb-pll.c exists in TBS tree at drivers/media/dvb-frontends/
+    (NOT dvb-core/) and still uses ida_simple_get/ida_simple_remove
+    (removed in kernel 6.19+) -> the patch itself is legitimate.
+  - Checked main and dev on GitHub: NEITHER contains the patch - the
+    user's runtime kernel-patches.sh is a third, never-pushed revision
+    (from an earlier local Claude session; main README already listed
+    "dvb-pll.c (IDA)" as a feature).
+  - IMPACT: none on the user's build - dvb-pll.o is not in our Makefile
+    targets; nothing links dvb_pll_attach. The warn was cosmetic.
+  - ACTION (restore, never-remove rule): patch added to dev with the
+    corrected path + verified replacement (ida_alloc_max semantics:
+    ida_simple_get(ida, 0, DVB_PLL_MAX, gfp) -> ida_alloc_max(ida,
+    DVB_PLL_MAX - 1, gfp); ida_simple_remove -> ida_free).

@@ -101,6 +101,27 @@ else:
     print("  No changes needed (already patched?)")'
 
     # -----------------------------------------------------------------------
+    # dvb-frontends/dvb-pll.c
+    #
+    # ida_simple_get/ida_simple_remove -> ida_alloc_max/ida_free
+    # Kernel 6.19: old IDA simple API removed. NOTE: dvb-pll.c is not part
+    # of this installer's build targets (nothing links dvb_pll_attach), so
+    # this patch is defensive - it keeps the whole tree buildable if the
+    # module is ever added. File lives in dvb-frontends/, not dvb-core/.
+    # -----------------------------------------------------------------------
+    apply_sed_if_match \\
+        "$SRC/drivers/media/dvb-frontends/dvb-pll.c" \\
+        "dvb-pll: ida_simple_get/remove -> ida_alloc_max/ida_free" \\
+        "ida_simple_get(&pll_ida" \\
+        's/ida_simple_get(&pll_ida, 0, DVB_PLL_MAX, GFP_KERNEL)/ida_alloc_max(&pll_ida, DVB_PLL_MAX - 1, GFP_KERNEL)/g'
+
+    apply_sed_if_match \\
+        "$SRC/drivers/media/dvb-frontends/dvb-pll.c" \\
+        "dvb-pll: ida_simple_remove -> ida_free" \\
+        "ida_simple_remove(&pll_ida" \\
+        's/ida_simple_remove(&pll_ida, nr)/ida_free(&pll_ida, nr)/g'
+
+    # -----------------------------------------------------------------------
     # dvb-frontends/avl6882.h
     #
     # IS_REACHABLE(CONFIG_DVB_AVL6882) block -> unconditional extern.
