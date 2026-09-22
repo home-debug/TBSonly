@@ -64,6 +64,8 @@ if new != txt:
 else:
     print("  No calls to patch")'
 
+
+if ker_ge 7 0; then
     # dvb_vb2_init: 3 args -> 4 (added mutex)
     # Kernel 7.0: dvb_vb2_init() extended with struct mutex *mutex as 3rd argument.
     #   Old signature: dvb_vb2_init(ctx, name, non_blocking)
@@ -99,6 +101,7 @@ if new != txt:
     open(f,"w").write(new); print("  OK: added &dmxdev->mutex (demux_filter)")
 else:
     print("  No changes needed (already patched?)"'
+fi
 
     # -----------------------------------------------------------------------
     # dvb-frontends/avl6882.h
@@ -121,7 +124,7 @@ new = pat.sub(r"\1", txt)
 if new != txt:
     open(f,"w").write(new); print("  OK: replaced IS_REACHABLE block")
 else:
-    print("  IS_REACHABLE block not found (already patched?)"'
+    print("  IS_REACHABLE block not found (already patched?)")'
 
     # -----------------------------------------------------------------------
     # dvb-frontends/cxd2820r_core.c

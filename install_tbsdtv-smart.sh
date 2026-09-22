@@ -26,6 +26,7 @@ KMAJ=$(echo "$KVER" | cut -d. -f1)
 KMIN=$(echo "$KVER" | cut -d. -f2)
 KBUILD="/lib/modules/${KVER}/build"
 KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-*-common" | sort -V | tail -1)
+grep -q "Gentoo" /etc/os-release 2>/dev/null && KHEADERS_COMMON=/usr/src/linux
 # Ubuntu variant: linux-headers-x.y.z-a (no -generic suffix)
 if [[ -z "$KHEADERS_COMMON" || ! -d "$KHEADERS_COMMON" ]]; then
     KVER_BASE="${KVER%%-*}"
@@ -307,8 +308,8 @@ PYEOF
     rm -f "$py_script"
 }
 
-step "Checking kernel version (required: 7.0+)"
-ker_ge 7 0 || error "Kernel $KVER is too old. Required: 7.0+"
+step "Checking kernel version (required: 6.18+)"
+ker_ge 6 18 || error "Kernel $KVER is too old. Required: 6.18+"
 info "Kernel $KVER - OK"
 
 step "Checking build environment"
@@ -442,6 +443,7 @@ obj-m += tbs_priv.o
 # Frontends also present in kernel but TBS has modified versions
 obj-m += cx24117.o
 obj-m += cxd2820r.o
+obj-m += dibx000_common.o
 obj-m += dib9000.o
 obj-m += isl6422.o
 obj-m += lgs8gl5.o
