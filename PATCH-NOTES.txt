@@ -33,3 +33,15 @@ Family-filtered build (2026-09-20):
     pci/saa716x only if SAA716x detected. dvb-core/dvb-frontends/tuners
     are always built (shared across families).
   - Empty DETECTED_FAMILIES (detection failed) = build everything (safe).
+
+=== Version 2026-09-23-1914 ===
+FULL RESTORE of all features:
+- detect_tbs_cards (card detection with family export)
+- USB support (20 modules in usb/dvb-usb)
+- stale modules cleanup (Ubuntu user report)
+- family-filtered build (skip irrelevant TARGET_DIRS)
+- detect_distro + per-distro hints (apt/dnf/pacman/zypper/emerge)
+- location-based kernel source detection (distro-agnostic)
+- branch detection (main/dev shown in header)
+- update check (offer to switch to newer dev with warning)
+Version format: TBSonly-RRRR-MM-DD-HHMM.zip

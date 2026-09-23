@@ -24,7 +24,6 @@ SRC="/usr/src/tbs-drivers"
 KVER="$(uname -r)"
 KMAJ=$(echo "$KVER" | cut -d. -f1)
 KMIN=$(echo "$KVER" | cut -d. -f2)
-KBUILD="/lib/modules/${KVER}/build"
 # ===========================================================================
 # Location-based kernel source detection
 # Tries standard paths in order, regardless of distribution.
@@ -55,9 +54,394 @@ if [[ -z "$KHEADERS_COMMON" || ! -d "$KHEADERS_COMMON" ]]; then
     KVER_BASE="${KVER%%-*}"
     KHEADERS_COMMON=$(find /usr/src -maxdepth 1 -name "linux-headers-${KVER_BASE}" -type d | sort -V | tail -1)
 fi
+BUILD_DIR="$SCRIPT_DIR/tbs-build-tmp"
+INSTALL_DIR="/lib/modules/${KVER}/updates/tbs"
+LOG="$SCRIPT_DIR/install_tbsdtv-smart.log"
+
+# tuners must be compiled before frontends/saa/tbs so Module.symvers is available
+TARGET_DIRS=("dvb-core" "dvb-frontends" "tuners" "pci/saa716x" "pci/tbsecp3" "pci/tbsci" "pci/tbsmod" "usb/dvb-usb")
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BLUE='\033[0;34m'; NC='\033[0m'
+info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC}  $*" | tee -a "$LOG"; }
+error() { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG"; exit 1; }
+step()  { echo -e "\n${CYAN}>>> $*${NC}" | tee -a "$LOG"; }
+pi()    { echo -e "${BLUE}[PATCH]${NC} $*" | tee -a "$LOG"; }
+pause() { echo -e "${YELLOW}--- Press Enter to continue ---${NC}"; read -r; }
+
+[[ "$DRY_RUN" -eq 1 ]] && warn "DRY-RUN MODE - no files will be modified"
+# Detect which branch of THIS repo (TBSonly) we run from
+SELF_BRANCH="unknown"
+SELF_COMMIT=""
+if [[ -d "$SCRIPT_DIR/.git" ]]; then
+    SELF_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    SELF_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)
+    [[ "$SELF_BRANCH" == "HEAD" ]] && SELF_BRANCH="detached"
+fi
+
+echo "=== $(date) ===" > "$LOG"
+echo "  Kernel: $KVER / TBS branch: ${TBS_BRANCH:-latest} / Script: ${SELF_BRANCH}${SELF_COMMIT:+ $SELF_COMMIT} / DryRun: $DRY_RUN" | tee -a "$LOG"
+
+case "$SELF_BRANCH" in
+    dev)
+        warn "  DEVELOPMENT version of this script (branch: dev)."
+        warn "  It may not work correctly. For stable releases use 'main':"
+        warn "    git checkout main && git pull origin main"
+        ;;
+    main)
+        info "  Stable branch (main) - OK."
+        ;;
+    *)
+        warn "  Could not determine script branch (zip download or detached HEAD?)."
+        warn "  Clone the repo to get updates: git clone https://github.com/home-debug/TBSonly.git"
+        ;;
+esac
+
+ker_ge() { [[ "$KMAJ" -gt "$1" ]] || { [[ "$KMAJ" -eq "$1" ]] && [[ "$KMIN" -ge "$2" ]]; }; }
+
+# ===========================================================================
+# Distribution detection (for kernel-source hints)
+# ===========================================================================
+detect_distro() {
+    [[ -f /etc/os-release ]] && source /etc/os-release
+    DISTRO="${ID:-unknown}"
+    info "  Distribution: $DISTRO"
+}
+
+apply_sed() {
+    local file="$1" desc="$2" expr="$3"
+    [[ -f "$file" ]] || { warn "Patch '$desc': file not found: $file"; return 0; }
+    if [[ "$DRY_RUN" -eq 1 ]]; then pi "[DRY-RUN] $desc"; return 0; fi
+    pi "Applying: $desc"
+    sed -i "$expr" "$file" && pi "  OK" || warn "  sed error: $file"
+}
+
+apply_sed_if_match() {
+    local file="$1" desc="$2" match="$3" expr="$4"
+    [[ -f "$file" ]] || { warn "Patch '$desc': file not found: $file"; return 0; }
+    grep -q "$match" "$file" 2>/dev/null || { pi "Skipping (already applied): $desc"; return 0; }
+    apply_sed "$file" "$desc" "$expr"
+}
+
+apply_python_patch() {
+    local file="$1" desc="$2" match="$3" pycode="$4"
+    [[ -f "$file" ]] || { warn "Patch '$desc': file not found: $file"; return 0; }
+    grep -q "$match" "$file" 2>/dev/null || { pi "Skipping (already applied): $desc"; return 0; }
+    if [[ "$DRY_RUN" -eq 1 ]]; then pi "[DRY-RUN] $desc"; return 0; fi
+    pi "Applying: $desc"
+    python3 -c "$pycode" "$file" && pi "  OK" || warn "  python error: $file"
+}
+
+# Load patches from separate file
+PATCHES_FILE="$SCRIPT_DIR/kernel-patches.sh"
+[[ -f "$PATCHES_FILE" ]] || error "Patches file not found: $PATCHES_FILE"
+# shellcheck source=kernel-patches.sh
+source "$PATCHES_FILE"
+
+# ===========================================================================
+# Check upstream for a newer 'dev' branch and offer to switch
+# (users normally run 'main'; dev is development - may not work)
+# ===========================================================================
+check_for_dev_update() {
+    [[ -d "$SCRIPT_DIR/.git" ]] || return 0
+
+    step "Checking for updates on origin..."
+
+    git -C "$SCRIPT_DIR" fetch origin --quiet 2>/dev/null \
+        || { warn "  Could not reach origin — continuing without update check."; return 0; }
+
+    if ! git -C "$SCRIPT_DIR" rev-parse --verify --quiet origin/dev >/dev/null; then
+        info "  No 'dev' branch on origin — you are up to date."
+        return 0
+    fi
+
+    local ahead
+    ahead=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
+
+    if [[ "$ahead" -eq 0 ]]; then
+        info "  'dev' is not ahead of your current branch — nothing newer available."
+        return 0
+    fi
+
+    local dev_date cur_date
+    dev_date=$(git -C "$SCRIPT_DIR" log -1 --format='%cd' --date=short origin/dev 2>/dev/null || echo "?")
+    cur_date=$(git -C "$SCRIPT_DIR" log -1 --format='%cd' --date=short HEAD 2>/dev/null || echo "?")
+
+    warn "  Newer version available on 'dev': $ahead new commit(s) since $dev_date"
+    warn "  You are running '$SELF_BRANCH' (current commit: $cur_date)"
+    echo -e "${YELLOW}  +----------------------------------------------------+"
+    echo -e "  |  WARNING: 'dev' is a DEVELOPMENT version.          |"
+    echo -e "  |  It may NOT work correctly.                        |"
+    echo -e "  |  Stable releases are on 'main'.                    |"
+    echo -e "  +----------------------------------------------------+${NC}"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "[DRY-RUN] Would run: git checkout dev && git pull --ff-only origin dev"
+        return 0
+    fi
+
+    if [[ -t 0 ]]; then
+        read -rp "  Switch to 'dev' and continue with the newer version? [y/N]: " ANS
+        if [[ "${ANS,,}" == "y" ]]; then
+            git -C "$SCRIPT_DIR" checkout dev 2>&1 | tee -a "$LOG"
+            git -C "$SCRIPT_DIR" pull --ff-only origin dev 2>&1 | tee -a "$LOG"
+            info "  Switched to 'dev'. Re-starting script..."
+            SELF_PATH="$SCRIPT_DIR/$(basename "$0")"
+            sleep 1
+            exec bash "$SELF_PATH"
+        fi
+        info "  Staying on '$SELF_BRANCH'."
+    else
+        warn "  Non-interactive shell — to switch manually run:"
+        warn "    git checkout dev && git pull origin dev"
+    fi
+}
+
+# ===========================================================================
+cleanup() {
+    info "Cleanup - restoring original files..."
+    local h1="$KHEADERS_COMMON/include/media/dvb_frontend.h"
+    local h2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"
+    local mf="$SRC/drivers/media/dvb-frontends/Makefile"
+    local mf_saa="$SRC/drivers/media/pci/saa716x/Makefile"
+    local mf_tbs="$SRC/drivers/media/pci/tbsecp3/Makefile"
+    local mf_tuners="$SRC/drivers/media/tuners/Makefile"
+    local mf_usb="$SRC/drivers/media/usb/dvb-usb/Makefile"
+    # Kernel headers: always restore (outside TBS tree)
+    [[ -f "${h1}.orig" ]]        && mv "${h1}.orig"        "$h1"        && info "  Restored: dvb_frontend.h"
+    [[ -f "${h2}.orig" ]]        && mv "${h2}.orig"        "$h2"        && info "  Restored: frontend.h"
+    # TBS Makefiles: do NOT restore - they must remain modified for modprobe to work
+    # Just remove the .orig backups
+    [[ -f "${mf}.orig" ]]        && rm "${mf}.orig"        && info "  Removed backup: dvb-frontends/Makefile.orig"
+    [[ -f "${mf_saa}.orig" ]]    && rm "${mf_saa}.orig"    && info "  Removed backup: saa716x/Makefile.orig"
+    [[ -f "${mf_tbs}.orig" ]]    && rm "${mf_tbs}.orig"    && info "  Removed backup: tbsecp3/Makefile.orig"
+    [[ -f "${mf_tuners}.orig" ]] && rm "${mf_tuners}.orig" && info "  Removed backup: tuners/Makefile.orig"
+    [[ -f "${mf_usb}.orig" ]]    && rm "${mf_usb}.orig"    && info "  Removed backup: usb/dvb-usb/Makefile.orig"
+}
+trap cleanup EXIT
+
+
+# ===========================================================================
+# TBS Hardware Detection (cosmetic only, does not affect build targets)
+# ===========================================================================
+detect_tbs_cards() {
+    local py_script py_out
+    py_script=$(mktemp /tmp/detect_tbs.XXXXXX.py)
+
+    cat > "$py_script" << 'PYEOF'
+import re, os, glob, subprocess, sys
+
+src = sys.argv[1] if len(sys.argv) > 1 else "/usr/src/tbs-drivers"
+
+def _open(p):
+    return open(p, encoding="utf-8", errors="replace")
+
+def parse_tbs_pci_map(src_path):
+    tbs_map = {}
+
+    # --- TBSECP3 ---
+    cards = os.path.join(src_path, "drivers/media/pci/tbsecp3/tbsecp3-cards.c")
+    core  = os.path.join(src_path, "drivers/media/pci/tbsecp3/tbsecp3-core.c")
+
+    board_names = {}
+    if os.path.exists(cards):
+        with _open(cards) as f:
+            content = f.read()
+        for m in re.finditer(r'\[([A-Z_0-9]+)\]\s*=\s*\{[^}]*?\.name\s*=\s*"([^"]+)"', content, re.DOTALL):
+            board_names[m.group(1)] = m.group(2).strip()
+
+    if os.path.exists(core):
+        with _open(core) as f:
+            content = f.read()
+        for m in re.finditer(r'TBSECP3_ID\(([A-Z_0-9]+),0x([0-9a-fA-F]+),0x([0-9a-fA-F]+)\)', content):
+            bid, sv, sd = m.groups()
+            name = board_names.get(bid, bid)
+            key = (0x544d, 0x6178, int(sv, 16), int(sd, 16))
+            tbs_map[key] = name
+
+    # --- SAA716x ---
+    budget = os.path.join(src_path, "drivers/media/pci/saa716x/saa716x_budget.c")
+    if not os.path.exists(budget):
+        return tbs_map
+
+    defs = {}
+    for h in glob.glob(os.path.join(src_path, "drivers/media/pci/saa716x/*.h")):
+        with _open(h) as f:
+            for m in re.finditer(r'#define\s+([A-Z_][A-Z0-9_]*)\s+0x([0-9a-fA-F]+)', f.read()):
+                defs[m.group(1)] = int(m.group(2), 16)
+
+    defs.setdefault('NXP_SEMICONDUCTOR', 0x1131)
+    defs.setdefault('SAA7160', 0x7160)
+    defs.setdefault('SAA7161', 0x7161)
+    defs.setdefault('SAA7162', 0x7162)
+
+    with _open(budget) as f:
+        budget_lines = f.readlines()
+
+    for line in budget_lines:
+        m = re.search(
+            r'MAKE_ENTRY\(\s*([A-Z_0-9]+)\s*,\s*([A-Z_0-9]+)\s*,\s*([A-Z_0-9]+)\s*,\s*&([a-z_0-9]+)',
+            line)
+        if not m:
+            continue
+
+        sv_n, sd_n, chip_n, cfg_name = m.groups()
+        sv = defs.get(sv_n)
+        sd = defs.get(sd_n)
+        chip = defs.get(chip_n)
+        if sv is None or sd is None or chip is None:
+            continue
+
+        cm = re.search(r'/\*\s*(.+?)\s*\*/', line)
+        model = cm.group(1).strip() if cm else f"{sv_n} {sd_n}"
+
+        tbs_m = re.search(r'tbs(\d+)', cfg_name, re.IGNORECASE)
+        if tbs_m:
+            clone = f"TBS{tbs_m.group(1)}"
+            if clone not in model:
+                model += f" ({clone})"
+
+        key = (0x1131, chip, sv, sd)
+        tbs_map[key] = model
+
+    return tbs_map
+
+def scan_pci():
+    try:
+        out = subprocess.check_output(["lspci", "-vmm", "-nn"], text=True)
+    except Exception:
+        return []
+
+    cards = []
+    current = {}
+    for line in out.splitlines():
+        if line.startswith("Slot:"):
+            if current:
+                cards.append(current)
+            current = {"slot": line[5:].strip()}
+        elif line.startswith("Vendor:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["vendor"] = int(m.group(1), 16)
+        elif line.startswith("Device:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["device"] = int(m.group(1), 16)
+        elif line.startswith("SVendor:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["svendor"] = int(m.group(1), 16)
+        elif line.startswith("SDevice:"):
+            m = re.search(r'\[([0-9a-fA-F]{4})\]', line)
+            if m: current["sdevice"] = int(m.group(1), 16)
+        elif line.startswith("Rev:"):
+            current["rev"] = line[4:].strip()
+
+    if current:
+        cards.append(current)
+    return cards
+
+def main():
+    try:
+        _main_impl()
+    except Exception as e:
+        print("WARN|Detection error: " + repr(e))
+
+def _main_impl():
+    if not os.path.isdir(src):
+        print("WARN|TBS sources not found. Skipping detection.")
+        sys.exit(0)
+
+    tbs_map = parse_tbs_pci_map(src)
+    found = []
+
+    for card in scan_pci():
+        v = card.get("vendor")
+        d = card.get("device")
+        sv = card.get("svendor")
+        sd = card.get("sdevice")
+        if v is None or d is None or sv is None or sd is None:
+            continue
+
+        key = (v, d, sv, sd)
+        if key in tbs_map:
+            if v == 0x544d:
+                family = "TBSECP3"
+            elif v == 0x1131:
+                family = "SAA716x"
+            else:
+                print("WARN|Unknown TBS bridge vendor %04x: %s  [PCI %s]" % (v, tbs_map[key], card.get('slot', '?')))
+                print("WARN|  No driver module assigned - please update the script.")
+                continue
+            found.append({
+                "family": family,
+                "name": tbs_map[key],
+                "slot": card.get("slot", "?"),
+                "sub": "%04x:%04x" % (sv, sd),
+                "rev": card.get("rev", "-")
+            })
+
+    if not found:
+        print("WARN|No TBS cards detected via lspci.")
+        return
+
+    print("INFO|============================================")
+    print("INFO|  DETECTED TBS TUNERS: %d" % len(found))
+    print("INFO|============================================")
+
+    for c in found:
+        print("INFO|Found %s  [PCI %s, subdev %s, rev %s]" % (c['name'], c['slot'], c['sub'], c['rev']))
+        print("INFO|  *** TUNER: %s ***" % c['family'])
+
+    print("INFO|Total TBS cards detected: %d" % len(found))
+
+if __name__ == "__main__":
+    main()
+PYEOF
+
+    step "Detecting TBS cards from source tree..."
+
+    if ! command -v lspci >/dev/null 2>&1; then
+        warn "  lspci not found (package: pciutils). Skipping hardware detection."
+        rm -f "$py_script"
+        return
+    fi
+
+    if [[ ! -d "$SRC/drivers/media/pci/tbsecp3" && ! -d "$SRC/drivers/media/pci/saa716x" ]]; then
+        warn "  TBS sources not found yet. Skipping hardware detection."
+        rm -f "$py_script"
+        return
+    fi
+
+    py_out=$(python3 "$py_script" "$SRC" 2>>"$LOG" || true)
+
+    DETECTED_FAMILIES=""
+    while IFS='|' read -r prefix msg; do
+        case "$prefix" in
+            INFO)
+                info "  $msg"
+                if [[ "$msg" == ***TUNER:* ]]; then
+                    fam="${msg#***TUNER: }"; fam="${fam%% ***}"
+                    [[ " $DETECTED_FAMILIES " != *" $fam "* ]] && DETECTED_FAMILIES+=" $fam"
+                fi
+                ;;
+            WARN) warn "  $msg" ;;
+        esac
+    done <<< "$py_out"
+
+    rm -f "$py_script"
+}
+
+step "Checking kernel version (required: 7.0+)"
+ker_ge 7 0 || error "Kernel $KVER is too old. Required: 7.0+"
+info "Kernel $KVER - OK"
+
+step "Checking build environment"
+echo "  Kernel:         $KVER"            | tee -a "$LOG"
+echo "  KBuild:         $KBUILD"          | tee -a "$LOG"
+echo "  TBS sources:    $SRC"             | tee -a "$LOG"
+echo "  Common headers: $KHEADERS_COMMON" | tee -a "$LOG"
+echo "  Log:            $LOG"             | tee -a "$LOG"
 
 detect_distro
-
+check_for_dev_update
 [[ -d "$KBUILD" ]] || {
     case "$DISTRO" in
         debian|ubuntu|linuxmint|pop) hint="apt install linux-headers-${KVER}" ;;
@@ -70,6 +454,9 @@ detect_distro
     error "Kernel build directory not found: $KBUILD\n  Try: $hint"
 }
 [[ -n "$KHEADERS_COMMON" && -d "$KHEADERS_COMMON" ]] || error "Kernel headers source not found for ${KVER}"
+for cmd in git make gcc rsync python3; do
+    command -v "$cmd" &>/dev/null || error "Missing dependency: $cmd"
+done
 
 H1="$KHEADERS_COMMON/include/media/dvb_frontend.h"
 H2="$KHEADERS_COMMON/include/uapi/linux/dvb/frontend.h"
@@ -129,7 +516,7 @@ if [[ -n "$DETECTED_FAMILIES" ]]; then
             "pci/saa716x")
                 [[ "$DETECTED_FAMILIES" == *"SAA716x"* ]] && keep=1 ;;
             *)
-                keep=1 ;;  # dvb-frontends, tuners, dvb-core always needed
+                keep=1 ;;
         esac
         [[ "$keep" -eq 1 ]] && FILTERED+=("$d")
     done
@@ -147,13 +534,10 @@ rsync -a "$SRC/include/media/"  "$BUILD_DIR/include/media/"  2>&1 | tee -a "$LOG
 rsync -a "$SRC/include/uapi/"   "$BUILD_DIR/include/uapi/"   2>&1 | tee -a "$LOG"
 mkdir -p "$BUILD_DIR/include/media/tuners"
 if [[ -d "$SRC/drivers/media/tuners" ]]; then
-    find "$SRC/drivers/media/tuners" -name "*.h" \
-        -exec cp {} "$BUILD_DIR/include/media/tuners/" \; 2>/dev/null || true
+    find "$SRC/drivers/media/tuners" -name "*.h"         -exec cp {} "$BUILD_DIR/include/media/tuners/" \; 2>/dev/null || true
     cp "$SRC/drivers/media/tuners/tuner-i2c.h" "$BUILD_DIR/include/" 2>/dev/null || true
 fi
-[[ -d "$SRC/drivers/media/usb" ]] && \
-    find "$SRC/drivers/media/usb" -name "*.h" \
-        -exec cp {} "$BUILD_DIR/include/" \; 2>/dev/null || true
+[[ -d "$SRC/drivers/media/usb" ]] &&     find "$SRC/drivers/media/usb" -name "*.h"         -exec cp {} "$BUILD_DIR/include/" \; 2>/dev/null || true
 info "Build directory ready."
 
 step "Temporarily patching kernel headers"
@@ -171,14 +555,9 @@ if [[ -f "$KERNEL_CONFIG" ]]; then
         MISSING_DEFINES+=" -D${cfg}=1"
         info "  Missing: ${cfg}"
     done < <(
-        grep -h "obj-\$(CONFIG_DVB" \
-            "$SRC/drivers/media/dvb-frontends/Makefile" \
-            "$SRC/drivers/media/dvb-core/Makefile" \
-            2>/dev/null | grep -oP 'CONFIG_DVB_\w+' | sort -u
+        grep -h "obj-\$(CONFIG_DVB"             "$SRC/drivers/media/dvb-frontends/Makefile"             "$SRC/drivers/media/dvb-core/Makefile"             2>/dev/null | grep -oP 'CONFIG_DVB_\w+' | sort -u
     )
-    [[ -z "$MISSING_DEFINES" ]] \
-        && info "All CONFIG_DVB_* defines present." \
-        || info "Added $(echo "$MISSING_DEFINES" | wc -w) missing defines."
+    [[ -z "$MISSING_DEFINES" ]]         && info "All CONFIG_DVB_* defines present."         || info "Added $(echo "$MISSING_DEFINES" | wc -w) missing defines."
 else
     warn "Kernel config not found: $KERNEL_CONFIG"
     warn "CONFIG_DVB_* defines will not be verified. Build may fail."
@@ -243,10 +622,7 @@ ccflags-y += -Idrivers/media/tuners
 ccflags-y += -Idrivers/media/dvb-core
 ccflags-y += -Idrivers/media/dvb-frontends
 ccflags-y += -Idrivers/media/dvb-frontends/stid135
-saa716x_core-objs := saa716x_pci.o saa716x_i2c.o saa716x_cgu.o saa716x_msi.o \
-                     saa716x_dma.o saa716x_vip.o saa716x_aip.o saa716x_phi.o  \
-                     saa716x_boot.o saa716x_fgpi.o saa716x_adap.o saa716x_gpio.o \
-                     saa716x_greg.o saa716x_rom.o saa716x_spi.o
+saa716x_core-objs := saa716x_pci.o saa716x_i2c.o saa716x_cgu.o saa716x_msi.o                      saa716x_dma.o saa716x_vip.o saa716x_aip.o saa716x_phi.o                       saa716x_boot.o saa716x_fgpi.o saa716x_adap.o saa716x_gpio.o                      saa716x_greg.o saa716x_rom.o saa716x_spi.o
 saa716x_tbs-dvb-objs := saa716x_budget.o tbsci-i2c.o tbs-ci.o
 obj-m += saa716x_core.o
 obj-m += saa716x_tbs-dvb.o
@@ -309,8 +685,7 @@ ccflags-y += -Idrivers/media/tuners
 ccflags-y += -Idrivers/media/dvb-core
 ccflags-y += -Idrivers/media/dvb-frontends
 ccflags-y += -Idrivers/media/dvb-frontends/stid135
-tbsecp3-objs := tbsecp3-core.o tbsecp3-cards.o tbsecp3-i2c.o tbsecp3-dma.o \
-                tbsecp3-dvb.o tbsecp3-ca.o tbsecp3-asi.o tbsecp3-ci.o
+tbsecp3-objs := tbsecp3-core.o tbsecp3-cards.o tbsecp3-i2c.o tbsecp3-dma.o                 tbsecp3-dvb.o tbsecp3-ca.o tbsecp3-asi.o tbsecp3-ci.o
 obj-m += tbsecp3.o
 MAKEFILE
 info "tbsecp3 Makefile ready."

@@ -226,11 +226,10 @@ git pull origin dev
 
 ## Tested on
 
-- Debian 13 (Trixie) — kernel 7.x
-- Ubuntu 26.04
-- Fedora 42
-- Arch Linux
-- openSUSE Tumbleweed
+- Debian 13 (Trixie) — kernel 7.x (verified by maintainer)
+- Ubuntu 26.04 (user-reported, TBS 6218)
+
+Other distributions are supported by design (location-based detection) but not yet verified.
 
 ## Disclaimer
 
