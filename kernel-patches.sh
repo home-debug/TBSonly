@@ -1,14 +1,6 @@
 # kernel-patches.sh
 # Sourced by install_tbsdtv-smart.sh
 # Add new patches here when compilation fails on a new kernel version.
-#
-# Available functions (defined in main script):
-#   apply_sed_if_match FILE DESC MARKER 'SED_EXPRESSION'
-#   apply_python_patch FILE DESC MARKER 'PYTHON_CODE'
-#   ker_ge  MAJOR MINOR   -> true if current kernel >= MAJOR.MINOR
-#
-# MARKER = unique fragment of OLD code - patch is skipped if marker not found (idempotent)
-# SRC, DRY_RUN, pi, warn - available from main script
 
 apply_kernel_api_patches() {
     step "Applying kernel API patches (${KVER})"
@@ -18,21 +10,18 @@ apply_kernel_api_patches() {
     # -----------------------------------------------------------------------
     pi "dmxdev.c: API patches..."
 
-    # from_timer() -> timer_container_of()
     apply_sed_if_match \
         "$SRC/drivers/media/dvb-core/dmxdev.c" \
         "dmxdev: from_timer -> timer_container_of" \
         "from_timer(dmxdevfilter" \
         's/from_timer(\(dmxdevfilter\), t, timer)/timer_container_of(dmxdevfilter, t, timer)/g'
 
-    # del_timer() -> timer_delete()
     apply_sed_if_match \
         "$SRC/drivers/media/dvb-core/dmxdev.c" \
         "dmxdev: del_timer -> timer_delete" \
         "del_timer(" \
         's/del_timer(/timer_delete(/g'
 
-    # dvb_vb2_fill_buffer: 4 args -> 5 (added flush=NULL)
     apply_python_patch \
         "$SRC/drivers/media/dvb-core/dmxdev.c" \
         "dmxdev: dvb_vb2_fill_buffer +flush=NULL" \
@@ -46,9 +35,8 @@ new = pat.sub(add_null, txt)
 if new != txt:
     open(f,"w").write(new); print("  OK: added flush=NULL")
 else:
-    print("  No calls to patch")'''
+    print("  No calls to patch")'
 
-    # dvb_vb2_init: 3 args -> 4 (added mutex)
     apply_python_patch \
         "$SRC/drivers/media/dvb-core/dmxdev.c" \
         "dmxdev: dvb_vb2_init +mutex (dvr_vb2_ctx)" \
@@ -96,7 +84,7 @@ new = pat.sub(r"\1", txt)
 if new != txt:
     open(f,"w").write(new); print("  OK: replaced IS_REACHABLE block")
 else:
-    print("  IS_REACHABLE block not found (already patched?)")'''
+    print("  IS_REACHABLE block not found (already patched?)")'
 
     # -----------------------------------------------------------------------
     # dvb-frontends/cxd2820r_core.c
@@ -116,7 +104,6 @@ if new != txt:
 else:
     print("  No changes needed")'''
 
-    # After void -> int change, function must return 0 instead of bare return.
     apply_sed_if_match \
         "$SRC/drivers/media/dvb-frontends/cxd2820r_core.c" \
         "cxd2820r: gpio_set return; -> return 0;" \
@@ -145,10 +132,6 @@ else:
         "mxl58x: CfgDemodAbortTune __maybe_unused" \
         "static int CfgDemodAbortTune(" \
         's/static int CfgDemodAbortTune(/static int __maybe_unused CfgDemodAbortTune(/g'
-
-    # -----------------------------------------------------------------------
-    # Add new patches above this line.
-    # -----------------------------------------------------------------------
 
     [[ "$DRY_RUN" -eq 1 ]] && info "Dry-run: done." || info "All patches applied."
 }

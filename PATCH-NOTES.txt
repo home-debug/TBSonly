@@ -25,3 +25,11 @@ Ubuntu user feedback integrated (2026-09-20):
   - Same user hit "mismatched version errors" until clearing
     /lib/modules/7.0.0-31-generic/updates/ of old modules.
     -> Added optional stale-modules cleanup prompt before install.
+
+Family-filtered build (2026-09-20):
+  - detect_tbs_cards now exports DETECTED_FAMILIES (TBSECP3/SAA716x/USB)
+  - After detection, TARGET_DIRS is filtered: usb/dvb-usb only if USB
+    detected, pci/tbsecp3 + pci/tbsmod only if TBSECP3 detected,
+    pci/saa716x only if SAA716x detected. dvb-core/dvb-frontends/tuners
+    are always built (shared across families).
+  - Empty DETECTED_FAMILIES (detection failed) = build everything (safe).
