@@ -1,5 +1,10 @@
 # Release Notes
 
+## 2026-09-27-0001
+
+### Fixes
+- **rsync `mkdir ... include/media failed: File exists`** on header trees that ship `include/media` (or `uapi`) as a file/symlink: the entry is now detected, replaced with a real directory, and the build proceeds (reported on a non-Debian kernel/headers tree)
+
 ## v20-dev (2026-09-20) — DEVELOPMENT / UNSTABLE
 
 > ⚠️ **This is a development version.** It contains experimental features and may not work correctly on all systems. Use the `main` branch for stable releases.

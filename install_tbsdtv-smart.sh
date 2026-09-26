@@ -530,6 +530,17 @@ step "Creating isolated build directory"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/include"
 rsync -a --info=progress2 "$KHEADERS_COMMON/include/" "$BUILD_DIR/include/" 2>&1 | tee -a "$LOG"
+# Some header trees ship include/media (or uapi) as a file/symlink, which
+# blocks the follow-up rsync into a real directory (mkdir: File exists).
+# Convert any such non-directory entry into a real directory first.
+for d in media uapi; do
+    if { [[ -e "$BUILD_DIR/include/$d" ]] || [[ -L "$BUILD_DIR/include/$d" ]]; } \
+       && [[ ! -d "$BUILD_DIR/include/$d" ]]; then
+        warn "  $BUILD_DIR/include/$d is not a directory (headers tree quirk) - replacing"
+        rm -f "$BUILD_DIR/include/$d"
+    fi
+    mkdir -p "$BUILD_DIR/include/$d"
+done
 rsync -a "$SRC/include/media/"  "$BUILD_DIR/include/media/"  2>&1 | tee -a "$LOG"
 rsync -a "$SRC/include/uapi/"   "$BUILD_DIR/include/uapi/"   2>&1 | tee -a "$LOG"
 mkdir -p "$BUILD_DIR/include/media/tuners"

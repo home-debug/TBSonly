@@ -45,3 +45,10 @@ FULL RESTORE of all features:
 - branch detection (main/dev shown in header)
 - update check (offer to switch to newer dev with warning)
 Version format: TBSonly-RRRR-MM-DD-HHMM.zip
+
+=== 2026-09-27-0001 ===
+Fix: rsync mkdir "File exists" on BUILD_DIR/include/media.
+Reproduced locally (file named media lands via first rsync from
+KHEADERS_COMMON; second rsync into media/ then fails).
+Fix: after the first rsync, any non-directory media/uapi entry is removed
+and recreated as a real directory. Nothing else touched.
