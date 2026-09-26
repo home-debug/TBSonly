@@ -5,7 +5,7 @@
 
 Out-of-tree driver installer for **TBS DVB tuners** on modern Linux kernels (7.0+).
 
-This project was created with the help of **Claude AI (Anthropic)**.  
+This project is developed with the help of **Kimi AI (Moonshot AI)**.
 The generated code is verified and tested by a human.
 
 ## Supported cards

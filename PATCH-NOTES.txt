@@ -52,3 +52,9 @@ Reproduced locally (file named media lands via first rsync from
 KHEADERS_COMMON; second rsync into media/ then fails).
 Fix: after the first rsync, any non-directory media/uapi entry is removed
 and recreated as a real directory. Nothing else touched.
+
+=== 2026-09-27-0008 ===
+- README: attribution updated to Kimi AI (Moonshot AI)
+- Version naming FIXED: TBSonly-RRRR-MM-DD-HHMM.zip (date + hour:minute).
+  Previous "0001" suffix was a format error. No code changes vs 0001.
+Version renamed to user-local time: 2026-09-26-1810 (Europe/Warsaw).
