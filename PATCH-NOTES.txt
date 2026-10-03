@@ -58,3 +58,10 @@ and recreated as a real directory. Nothing else touched.
 - Version naming FIXED: TBSonly-RRRR-MM-DD-HHMM.zip (date + hour:minute).
   Previous "0001" suffix was a format error. No code changes vs 0001.
 Version renamed to user-local time: 2026-09-26-1810 (Europe/Warsaw).
+
+=== 2026-10-03-2135 ===
+Firmware step added (user request) after module installation:
+wget http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmwares_v1.0.tar.bz2
+tar jxvf ... -C /lib/firmware/
+- Idempotent via marker /lib/firmware/.tbs-tuner-firmwares_v1.0
+- wget first, curl fallback; failure = WARN + manual hint (not fatal)

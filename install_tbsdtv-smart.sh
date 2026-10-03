@@ -831,6 +831,37 @@ done
 info "Running depmod -a $KVER"
 depmod -a "$KVER" 2>&1 | tee -a "$LOG"
 
+step "Firmware installation"
+# Some TBS cards need firmware blobs loaded by the frontend drivers.
+FIRMWARE_URL="http://www.tbsdtv.com/download/document/linux/tbs-tuner-firmwares_v1.0.tar.bz2"
+FIRMWARE_MARKER="/lib/firmware/.tbs-tuner-firmwares_v1.0"
+if [[ -f "$FIRMWARE_MARKER" ]]; then
+    info "  TBS firmware already installed (marker: $FIRMWARE_MARKER)"
+else
+    read -rp "  Download and install TBS tuner firmware? [Y/n]: " FW_ANS
+    if [[ "${FW_ANS,,}" != "n" ]]; then
+        FW_TMP=$(mktemp /tmp/tbs-fw.XXXXXX.tar.bz2)
+        info "  Downloading: $FIRMWARE_URL"
+        if command -v wget &>/dev/null; then
+            wget -q -O "$FW_TMP" "$FIRMWARE_URL" 2>>"$LOG" || true
+        fi
+        if [[ ! -s "$FW_TMP" ]] && command -v curl &>/dev/null; then
+            curl -fsSL -o "$FW_TMP" "$FIRMWARE_URL" 2>>"$LOG" || true
+        fi
+        if [[ -s "$FW_TMP" ]]; then
+            tar jxvf "$FW_TMP" -C /lib/firmware/ 2>&1 | tee -a "$LOG"
+            touch "$FIRMWARE_MARKER"
+            info "  Firmware installed to /lib/firmware/"
+        else
+            warn "  Firmware download failed (network/URL) - continuing without"
+            warn "  Manual: wget $FIRMWARE_URL && tar jxvf tbs-tuner-firmwares_v1.0.tar.bz2 -C /lib/firmware/"
+        fi
+        rm -f "$FW_TMP"
+    else
+        info "  Firmware installation skipped."
+    fi
+fi
+
 echo -e "${GREEN}  ╔════════════════════════════╗"
 echo -e "  ║  INSTALLATION OK!          ║"
 echo -e "  ║  Please reboot the system. ║"

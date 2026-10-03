@@ -1,5 +1,10 @@
 # Release Notes
 
+## 2026-10-03-2135
+
+### New features
+- **TBS tuner firmware installation** — new step after module installation: downloads `tbs-tuner-firmwares_v1.0.tar.bz2` from tbsdtv.com and extracts it to `/lib/firmware/`. Idempotent (skips when already installed), wget with curl fallback, and non-fatal on download failure (warn + manual instructions)
+
 ## 2026-09-27-0001
 
 ### Fixes
